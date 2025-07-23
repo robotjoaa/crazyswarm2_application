@@ -21,11 +21,7 @@ find_package(visualization_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(rviz_2d_overlay_msgs REQUIRED)
-
-find_package(GTSAM REQUIRED)
-
 find_package(crazyflie_interfaces REQUIRED)
-find_package(apriltag_msgs REQUIRED)
 
 find_package(rosidl_default_generators REQUIRED)
 
@@ -59,7 +55,6 @@ add_subdirectory(external/3dvg)
 
 set(APPLICATION_SRC
   src/crazyswarm_app.cpp
-  src/handler/april_tag.cpp
   src/handler/planning.cpp)
 
 set(ORCA_SRC
@@ -81,7 +76,6 @@ target_include_directories(
 )
 add_dependencies(${PROJECT_NAME}_node ${PROJECT_NAME})
 target_link_libraries(${PROJECT_NAME}_node 
-  gtsam
   "${PROJECT_NAME}__rosidl_typesupport_cpp")
 ament_target_dependencies(${PROJECT_NAME}_node
   rclcpp
@@ -90,7 +84,6 @@ ament_target_dependencies(${PROJECT_NAME}_node
   crazyflie_interfaces
   visualization_msgs
   tf2_ros
-  apriltag_msgs
 )
 
 # add mission node
@@ -120,27 +113,11 @@ ament_target_dependencies(visualization_node
   rviz_2d_overlay_msgs
 )
 
-# add april_detection_proxy node
-add_executable(april_detection_proxy_node 
-  src/april_detection_proxy.cpp src/common.cpp)
-add_dependencies(april_detection_proxy_node ${PROJECT_NAME})
-target_link_libraries(april_detection_proxy_node visibility_graph "${PROJECT_NAME}__rosidl_typesupport_cpp")
-ament_target_dependencies(april_detection_proxy_node
-  rclcpp
-  sensor_msgs
-  std_srvs
-  visualization_msgs
-  rosgraph_msgs
-  apriltag_msgs
-  crazyflie_interfaces
-)
-
 # Install C++ executables
 install(TARGETS
   ${PROJECT_NAME}_node
   mission_node
   visualization_node
-  april_detection_proxy_node
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -62,7 +62,6 @@ class RvizVisualizer : public rclcpp::Node
 
         rclcpp::Clock clock;
 
-        rclcpp::Publisher<MarkerArray>::SharedPtr tag_publisher;
         rclcpp::Publisher<OverlayText>::SharedPtr text_publisher;
         rclcpp::Publisher<Marker>::SharedPtr obstacle_publisher;
         rclcpp::Publisher<Marker>::SharedPtr orca_obstacle_publisher;
@@ -71,8 +70,6 @@ class RvizVisualizer : public rclcpp::Node
         rclcpp::Subscription<AgentsStateFeedback>::SharedPtr agent_state_subscriber;
 
         rclcpp::TimerBase::SharedPtr visualizing_timer;
-
-        std::map<std::string, tag> april_tags;
 
         std::string mesh_path;
 
@@ -99,7 +96,6 @@ class RvizVisualizer : public rclcpp::Node
             obstacle_publisher->publish(global_obs_visualize);
             orca_obstacle_publisher->publish(orca_obs_visualize);
             visibility_obstacle_publisher->publish(visibility_obs_visualize);
-            show_global_tag();
         }
 
         void agents_state_callback(
@@ -197,61 +193,6 @@ class RvizVisualizer : public rclcpp::Node
             text += " ";
         }
 
-        void show_global_tag()
-        {
-            std::string frame = "/world";
-            MarkerArray tag_array;
-            for (auto &[name, tag_struct] : april_tags)
-            {
-                Marker mk;
-                mk.header.frame_id = frame;
-                mk.header.stamp = clock.now();
-                mk.ns = name;
-                mk.id = tag_struct.id;
-                mk.type = visualization_msgs::msg::Marker::MESH_RESOURCE;
-                mk.action = visualization_msgs::msg::Marker::ADD;
-                mk.mesh_resource = "file://" + mesh_path;
-                Eigen::Vector3d pos = tag_struct.transform.translation();
-                mk.pose.position.x = pos.x();
-                mk.pose.position.y = pos.y();
-                mk.pose.position.z = pos.z();
-                mk.pose.orientation.x = 0.0;
-                mk.pose.orientation.y = 0.0;
-                mk.pose.orientation.z = 0.0;
-                mk.pose.orientation.w = 1.0;
-                mk.scale.x = 1;
-                mk.scale.y = 1;
-                mk.scale.z = 1;
-                if (std::strcmp(tag_struct.type.c_str(), relocalize.c_str()) == 0)
-                    mk.color.b = mk.color.g = mk.color.r = 1.0f;
-                else
-                    mk.color.g = 1.0f;
-
-                mk.mesh_use_embedded_materials = true;
-                mk.color.a = 1.0;
-
-                tag_array.markers.push_back(mk);
-
-                // send a transform for this pose
-                // Eigen::Quaterniond q(nwu_to_rdf.linear());
-                
-                // geometry_msgs::msg::TransformStamped msg2;
-                // msg2.header.frame_id = frame;
-                // msg2.header.stamp = clock.now();
-                // msg2.child_frame_id = name;
-                // msg2.transform.translation.x = pos.x();
-                // msg2.transform.translation.y = pos.y();
-                // msg2.transform.translation.z = pos.z();
-                // msg2.transform.rotation.x = q.x();
-                // msg2.transform.rotation.y = q.y();
-                // msg2.transform.rotation.z = q.z();
-                // msg2.transform.rotation.w = q.w();
-                // tf2_bc.sendTransform(msg2);
-            }
-
-            tag_publisher->publish(tag_array);
-        }
-
         void obstacles_to_vertices_vector(
             std::vector<visibility_graph::obstacle> &obs_list,
             visualization_msgs::msg::Marker &msg,
@@ -338,8 +279,6 @@ class RvizVisualizer : public rclcpp::Node
         RvizVisualizer()
         : Node("rviz_visualizer"), clock(RCL_ROS_TIME), tf2_bc(this)
         {
-            tag_publisher = this->create_publisher<MarkerArray>("rviz/tag", 10);
-
             text_publisher = this->create_publisher<OverlayText>("rviz/text", 10);
             
             obstacle_publisher = this->create_publisher<Marker>("rviz/obstacles", 10);
@@ -364,12 +303,11 @@ class RvizVisualizer : public rclcpp::Node
             concave_obstacles = 
                 this->get_parameter("concave_obstacles").get_parameter_value().get<bool>();
 
-            // load tags and obstacles from params
+            // load obstacles from params
             auto node_parameters_iface = this->get_node_parameters_interface();
             const std::map<std::string, rclcpp::ParameterValue> &parameter_overrides =
                 node_parameters_iface->get_parameter_overrides();
 
-            load_april_tags(parameter_overrides, april_tags, 0.0, true);
             // actual map
             load_obstacle_map(
                 parameter_overrides, 0.0, global_obstacle_list,

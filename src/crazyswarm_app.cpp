@@ -289,18 +289,6 @@ void cs2::cs2_application::pose_callback(
         copy.pose.orientation.y, copy.pose.orientation.z);
     state->second.transform.linear() = q.toRotationMatrix();
     state->second.t = copy.header.stamp;
-
-    // check agents_tag_queue and update s_queue
-    std::map<std::string, tag_queue>::iterator it = 
-        agents_tag_queue.find(state->first);
-    
-    if (it != agents_tag_queue.end())
-    {
-        if (it->second.s_queue.size() > max_queue_size)
-            it->second.s_queue.pop();
-        it->second.s_queue.push(state->second);
-    }
-
     state->second.radio_connection = true;
 
     // do a flip detection

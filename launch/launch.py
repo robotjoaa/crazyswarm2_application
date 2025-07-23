@@ -35,16 +35,16 @@ def generate_launch_description():
         'environment',
         environment_name)
         
-    # load apriltag detection parameters
-    april_param_yaml = os.path.join(
-        get_package_share_directory('apriltag_ros'),
-        'cfg',
-        'tags_36h11.yaml')
+    # # load apriltag detection parameters
+    # april_param_yaml = os.path.join(
+    #     get_package_share_directory('apriltag_ros'),
+    #     'cfg',
+    #     'tags_36h11.yaml')
 
     with open(environment_yaml, 'r') as ymlfile:
         environment = yaml.safe_load(ymlfile)  
-    with open(april_param_yaml, 'r') as ymlfile:
-        april = yaml.safe_load(ymlfile)  
+    # with open(april_param_yaml, 'r') as ymlfile:
+    #     april = yaml.safe_load(ymlfile)  
 
     # get log path
     log = os.path.join(
@@ -52,7 +52,7 @@ def generate_launch_description():
         'launch',
         'logger.csv')
 
-    tag_size = {'tag_edge_size': april["size"]}
+    #tag_size = {'tag_edge_size': april["size"]}
     log_path = {'log_path': log}
 
     return LaunchDescription([
@@ -62,14 +62,6 @@ def generate_launch_description():
             executable='crazyswarm_application_node',
             name='crazyswarm_application_node',
             output='screen',
-            parameters=[crazyflies, config, environment, tag_size, log_path]
-        ),
-        Node(
-            package='crazyswarm_application',
-            executable='april_detection_proxy_node',
-            condition=LaunchConfigurationEquals('sim','true'),
-            name='april_detection_proxy_node',
-            output='screen',
-            parameters=[crazyflies, config, environment]
+            parameters=[crazyflies, config, environment, log_path]
         ),
     ])

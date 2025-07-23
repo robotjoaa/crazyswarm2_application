@@ -37,7 +37,7 @@
 #include "crazyflie_interfaces/srv/set_group_mask.hpp"
 #include "crazyflie_interfaces/msg/velocity_world.hpp"
 
-#include <gtsam/geometry/Pose3.h>
+//#include <gtsam/geometry/Pose3.h>
 
 #include <Eigen/SVD>
 
@@ -74,60 +74,19 @@ namespace common
         bool completed;
         bool mission_capable;
 
-        gtsam::Pose3 transformEigen2Gtsam()
-        {
-            Eigen::Matrix3d rot_eigen = transform.linear();
-            gtsam::Rot3 rot(
-                rot_eigen(0,0), rot_eigen(0,1), rot_eigen(0,2),
-                rot_eigen(1,0), rot_eigen(1,1), rot_eigen(1,2),
-                rot_eigen(2,0), rot_eigen(2,1), rot_eigen(2,2));
+        // gtsam::Pose3 transformEigen2Gtsam()
+        // {
+        //     Eigen::Matrix3d rot_eigen = transform.linear();
+        //     gtsam::Rot3 rot(
+        //         rot_eigen(0,0), rot_eigen(0,1), rot_eigen(0,2),
+        //         rot_eigen(1,0), rot_eigen(1,1), rot_eigen(1,2),
+        //         rot_eigen(2,0), rot_eigen(2,1), rot_eigen(2,2));
         
-            return gtsam::Pose3(rot, 
-                gtsam::Point3{transform.translation().x(), 
-                transform.translation().y(), 
-                transform.translation().z()});
-        }
-    };
-
-    struct tag
-    {
-        rclcpp::Time t;
-        uint8_t id;
-        Eigen::Affine3d transform;
-        Eigen::Vector2i pixel_center;
-        std::string type;
-        bool found = false;
-
-        gtsam::Pose3 transformEigen2Gtsam()
-        {
-            Eigen::Matrix3d rot_eigen = transform.linear();
-            gtsam::Rot3 rot(
-                rot_eigen(0,0), rot_eigen(0,1), rot_eigen(0,2),
-                rot_eigen(1,0), rot_eigen(1,1), rot_eigen(1,2),
-                rot_eigen(2,0), rot_eigen(2,1), rot_eigen(2,2));
-        
-            return gtsam::Pose3(rot, 
-                gtsam::Point3{transform.translation().x(), 
-                transform.translation().y(), 
-                transform.translation().z()});
-        }
-    };
-
-    struct tag_queue
-    {
-        std::queue<tag> t_queue;
-        std::queue<agent_state> s_queue;
-    };
-
-    struct observation
-    {
-        gtsam::Pose3 pose;
-        std::queue<tag> marker;
-    };
-
-    struct factor_graph
-    {
-        std::map<long, observation> observations;
+        //     return gtsam::Pose3(rot, 
+        //         gtsam::Point3{transform.translation().x(), 
+        //         transform.translation().y(), 
+        //         transform.translation().z()});
+        // }
     };
 
     enum fsm
@@ -160,9 +119,6 @@ namespace common
             const std::string all = "all";
     };
 
-    const std::string relocalize = "relocalization";
-    const std::string eliminate = "eliminate";
-
     std::set<std::string> extract_names(
         const std::map<std::string, rclcpp::ParameterValue> &parameter_overrides,
         const std::string &pattern);
@@ -191,10 +147,6 @@ namespace common
     std::vector<visibility_graph::obstacle> generate_disjointed_wall(
         std::vector<Eigen::Vector2d> vertices, std::pair<double, double> height_pair,
         double thickness);
-    
-    void load_april_tags(
-        std::map<std::string, rclcpp::ParameterValue> parameter_overrides,
-        std::map<std::string, tag> &april_tag_map, double tag_edge_size, bool is_center_origin);
     
     void load_obstacle_map(
         std::map<std::string, rclcpp::ParameterValue> parameter_overrides, double factor,
