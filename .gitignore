@@ -52,3 +52,7 @@ launch/environment/*
 !launch/environment/arena.yaml
 !launch/environment/maze.yaml
 !launch/environment/hall.yaml
+
+build/
+install/
+log/

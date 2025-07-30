@@ -118,8 +118,8 @@ void cs2::cs2_application::user_callback(
             request->duration.sec = sec;
             request->duration.nanosec = nanosec;
                 
-            // while (!takeoff_all_client->wait_for_service())
-            //     RCLCPP_INFO(this->get_logger(), "service not available, waiting again...");
+            while (!takeoff_all_client->wait_for_service())
+                RCLCPP_INFO(this->get_logger(), "service not available, waiting again...");
             
             auto result = takeoff_all_client->async_send_request(request); 
             // auto response = result.get();
@@ -154,7 +154,7 @@ void cs2::cs2_application::user_callback(
             request->duration.nanosec = nanosec;
 
             // while (!land_all_client->wait_for_service()) 
-            //     RCLCPP_INFO(this->get_logger(), "service not available, waiting again...");
+            //    RCLCPP_INFO(this->get_logger(), "service not available, waiting again...");
             
             auto result = land_all_client->async_send_request(request);
             // auto response = result.get();

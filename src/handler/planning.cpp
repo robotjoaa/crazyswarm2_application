@@ -75,7 +75,7 @@ void cs2::cs2_application::conduct_planning(
     {
         float communication_radius_float = (float)communication_radius;
         visibility_graph::global_map copy = orca_obstacle_map;
-        copy.start_end.first = state.transform.translation();
+        copy.start_end.first = state..translation();
         copy.t = visibility_graph::get_affine_transform(
             copy.start_end.first, Eigen::Vector3d(0.0, 0.0, 0.0), "nwu");
 
@@ -149,7 +149,7 @@ void cs2::cs2_application::handler_timer_callback()
     MarkerArray target_array;
 
     double rad_to_deg = 180.0 / M_PI;
-
+    // RCLCPP_INFO(this->get_logger(),"handler_timer_callback");
     // Iterate through the agents
     for (auto &[key, agent] : agents_states)
     {
@@ -158,6 +158,7 @@ void cs2::cs2_application::handler_timer_callback()
         {
             case IDLE: case EMERGENCY:
             {
+                // RCLCPP_INFO(this->get_logger(),"IDLE");
                 break;
             }
 
@@ -333,8 +334,8 @@ void cs2::cs2_application::handler_timer_callback()
         }
 
         std::string str_copy = key;
-        // Remove cf from cfXX
-        str_copy.erase(0,2);
+        // Remove cf_ from cf_XX
+        str_copy.erase(0,3);
         int id = std::stoi(str_copy);
 
         Marker target;

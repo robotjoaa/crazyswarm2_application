@@ -124,8 +124,8 @@ class RvizVisualizer : public rclcpp::Node
             for (auto &agent : copy.agents)
             {
                 std::string str_copy = agent.id;
-                // Remove cf from cfXX
-                str_copy.erase(0,2);
+                // Remove cf_ from cf_XX
+                str_copy.erase(0,3);
                 int id = std::stoi(str_copy);
 
                 agent_state state;

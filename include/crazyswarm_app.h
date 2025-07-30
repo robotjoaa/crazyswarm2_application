@@ -175,7 +175,7 @@ namespace cs2
                     // Remove cf_ from cf_XX
                     str_copy.erase(0,3);
                     int id = std::stoi(str_copy);
-
+                    
                     std::vector<double> pos = parameter_overrides.at("robots." + name + ".initial_position").get<std::vector<double>>();
                     bool mission_capable = parameter_overrides.at("robots." + name + ".mission_capable").get<bool>();
 
@@ -189,8 +189,8 @@ namespace cs2
                     a_s.completed = false;
                     a_s.mission_capable = mission_capable;
 
-                    // RCLCPP_INFO(this->get_logger(), "(%s) %lf %lf %lf", name.c_str(), 
-                    //     pos[0], pos[1], pos[2]);
+                    RCLCPP_INFO(this->get_logger(), "(%s) %lf %lf %lf", name.c_str(), 
+                        pos[0], pos[1], pos[2]);
 
                     // to get the index of string std::stoi(str_copy)
                     agents_states.insert(
