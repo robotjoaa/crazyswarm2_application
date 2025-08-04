@@ -215,7 +215,8 @@ namespace cs2
                         name + "/vel", 14, vcallback)});
 
                     tmp.vel_world_publisher = 
-                        this->create_publisher<VelocityWorld>(name + "/cmd_velocity_world", 25);
+                    //    this->create_publisher<VelocityWorld>(name + "/cmd_velocity_world", 25);
+                        this->create_publisher<geometry_msgs::msg::Twist>(name + "/cmd_vel_legacy", 25);
 
                     agents_comm.insert({name, tmp});
                 

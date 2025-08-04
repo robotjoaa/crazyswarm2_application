@@ -31,6 +31,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include "std_srvs/srv/empty.hpp"
+#include "geometry_msgs/msg/twist.hpp"
 
 #include "crazyflie_interfaces/srv/land.hpp"
 #include "crazyflie_interfaces/srv/go_to.hpp"
@@ -48,6 +49,7 @@ using crazyflie_interfaces::srv::Land;
 using crazyflie_interfaces::srv::GoTo;
 using crazyflie_interfaces::srv::SetGroupMask;
 using crazyflie_interfaces::msg::VelocityWorld;
+using geometry_msgs::msg::Twist;
 
 namespace common
 {
@@ -57,7 +59,7 @@ namespace common
         rclcpp::Client<SetGroupMask>::SharedPtr set_group;
         rclcpp::Client<GoTo>::SharedPtr go_to;
         rclcpp::Client<Land>::SharedPtr land;
-        rclcpp::Publisher<VelocityWorld>::SharedPtr vel_world_publisher;
+        rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr vel_world_publisher;
     };
 
     struct agent_state

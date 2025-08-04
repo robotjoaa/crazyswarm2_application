@@ -75,7 +75,7 @@ void cs2::cs2_application::conduct_planning(
     {
         float communication_radius_float = (float)communication_radius;
         visibility_graph::global_map copy = orca_obstacle_map;
-        copy.start_end.first = state..translation();
+        copy.start_end.first = state.transform.translation();
         copy.t = visibility_graph::get_affine_transform(
             copy.start_end.first, Eigen::Vector3d(0.0, 0.0, 0.0), "nwu");
 
@@ -177,13 +177,22 @@ void cs2::cs2_application::handler_timer_callback()
                 
                 conduct_planning(vel_target, key, agent);
                 
-                VelocityWorld vel_msg;
-                vel_msg.header.stamp = clock.now();
-                vel_msg.vel.x = vel_target.x();
-                vel_msg.vel.y = vel_target.y();
-                vel_msg.vel.z = vel_target.z();
-                vel_msg.height = agent.previous_target.z();
-                vel_msg.yaw = agent.previous_yaw * rad_to_deg;
+                // VelocityWorld vel_msg;
+                // vel_msg.header.stamp = clock.now();
+                // vel_msg.vel.x = vel_target.x();
+                // vel_msg.vel.y = vel_target.y();
+                // vel_msg.vel.z = vel_target.z();
+                // // vel_msg.height = agent.previous_target.z();
+                // // vel_msg.yaw = agent.previous_yaw * rad_to_deg;
+                // vel_msg.yaw_rate = 0.0;
+
+                geometry_msgs::msg::Twist vel_msg;
+                //vel_msg.header.stamp = clock.now();
+                vel_msg.linear.x = vel_target.x();
+                vel_msg.linear.y = vel_target.y();
+                vel_msg.linear.z = vel_target.z();
+                vel_msg.angular.z = 0.0;
+
                 auto it = agents_comm.find(key);
                 if (it != agents_comm.end())
                     it->second.vel_world_publisher->publish(vel_msg);
@@ -252,9 +261,10 @@ void cs2::cs2_application::handler_timer_callback()
                 double pose_difference = 
                     (agent.target_queue.front() - agent.transform.translation()).norm();
 
-                VelocityWorld vel_msg;
+                // VelocityWorld vel_msg;
+                geometry_msgs::msg::Twist vel_msg;
                 Eigen::Vector3d vel_target;
-                vel_msg.height = agent.target_queue.front().z();
+                // // vel_msg.height = agent.target_queue.front().z();
 
                 if (pose_difference < reached_threshold)
                 {
@@ -285,10 +295,14 @@ void cs2::cs2_application::handler_timer_callback()
                 RCLCPP_INFO(this->get_logger(), "go_to_velocity %s (%.3lf %.3lf %.3lf) time (%.3lfms)", 
                     key.c_str(), vel_target.x(), vel_target.y(), vel_target.z(), duration_seconds * 1000.0);
 
-                vel_msg.header.stamp = clock.now();
-                vel_msg.vel.x = vel_target.x();
-                vel_msg.vel.y = vel_target.y();
-                vel_msg.vel.z = vel_target.z();
+                // vel_msg.header.stamp = clock.now();
+                // vel_msg.vel.x = vel_target.x();
+                // vel_msg.vel.y = vel_target.y();
+                // vel_msg.vel.z = vel_target.z();
+                // vel_msg.header.stamp = clock.now();
+                vel_msg.linear.x = vel_target.x();
+                vel_msg.linear.y = vel_target.y();
+                vel_msg.linear.z = vel_target.z();
 
                 // check the difference in heading
                 Eigen::Vector3d rpy = 
@@ -317,7 +331,16 @@ void cs2::cs2_application::handler_timer_callback()
                     yaw_target += rpy.z() * rad_to_deg;
 
                 // std::cout << rpy.z() << "/" << wrap_pi(yaw_target) / rad_to_deg << std::endl;
-                vel_msg.yaw = wrap_pi(yaw_target);
+                // vel_msg.yaw = wrap_pi(yaw_target);
+                double yaw_rate_target;
+                if (wrap_pi(yaw_target) > 1e-5)
+                    yaw_rate_target = 0.1;
+                else if (wrap_pi(yaw_target) < -1e-5)
+                    yaw_rate_target = -0.1;
+                else
+                    yaw_rate_target = 0.0;
+                // vel_msg.yaw_rate = yaw_rate_target;
+                vel_msg.angular.z = yaw_rate_target;
                 // vel_msg.yaw = yaw_target;
                 // vel_msg.yaw = agent.target_yaw;
                 // vel_msg.yaw = 0.0;
