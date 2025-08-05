@@ -154,6 +154,7 @@ void cs2::cs2_application::handler_timer_callback()
     for (auto &[key, agent] : agents_states)
     {
         rclcpp::Time now = this->get_clock()->now();
+        // RCLCPP_INFO(this->get_logger(),"handler_timer_callback %s %ld",key.c_str(),agent.flight_state);
         switch (agent.flight_state)
         {
             case IDLE: case EMERGENCY:
@@ -164,9 +165,12 @@ void cs2::cs2_application::handler_timer_callback()
 
             case HOVER: 
             {
+                Eigen::Vector3d trans = agent.transform.translation();
                 double pose_difference = 
-                    (agent.previous_target - agent.transform.translation()).norm();
-
+                    (agent.previous_target - trans).norm();
+                RCLCPP_INFO(this->get_logger(), "%s pose diff : %.3lf, prev_target : (%.3lf %.3lf %.3lf), agent : (%.3lf %.3lf %.3lf)", 
+                    key.c_str(), pose_difference, agent.previous_target.x(), agent.previous_target.y(), agent.previous_target.z(), \
+                    trans.x(), trans.y(), trans.z());
                 Eigen::Vector3d vel_target;
                 if (pose_difference < max_velocity)
                     vel_target = 
@@ -174,9 +178,11 @@ void cs2::cs2_application::handler_timer_callback()
                 else
                     vel_target = 
                         (agent.previous_target - agent.transform.translation()).normalized() * max_velocity;
-                
+                RCLCPP_INFO(this->get_logger(), "%s hover before : %.3lf %.3lf %.3lf", 
+                    key.c_str(), vel_target.x(), vel_target.y(), vel_target.z());
                 conduct_planning(vel_target, key, agent);
-                
+                RCLCPP_INFO(this->get_logger(), "%s hover after : %.3lf %.3lf %.3lf",
+                    key.c_str(), vel_target.x(), vel_target.y(), vel_target.z());
                 // VelocityWorld vel_msg;
                 // vel_msg.header.stamp = clock.now();
                 // vel_msg.vel.x = vel_target.x();
@@ -188,10 +194,24 @@ void cs2::cs2_application::handler_timer_callback()
 
                 geometry_msgs::msg::Twist vel_msg;
                 //vel_msg.header.stamp = clock.now();
-                vel_msg.linear.x = vel_target.x();
-                vel_msg.linear.y = vel_target.y();
-                vel_msg.linear.z = vel_target.z();
+                // vel_msg.linear.x = vel_target.x();
+                // vel_msg.linear.y = vel_target.y();
+                // vel_msg.linear.z = vel_target.z();
+                vel_msg.linear.x = 0.0;
+                vel_msg.linear.y = 0.0;
+                vel_msg.linear.z = 0.0;
                 vel_msg.angular.z = 0.0;
+
+
+                // vel_msg.linear.x = trans.x() + vel_target.x() * 1/this->planning_rate;
+                // vel_msg.linear.y = trans.y() + vel_target.y() * 1/this->planning_rate;
+                // vel_msg.linear.z = trans.z() + vel_target.z() * 1/this->planning_rate;
+                // Eigen::Vector3d rpy = 
+                //         euler_rpy(agent.transform.linear());
+                // vel_msg.linear.x = trans.x() + vel_target.x();
+                // vel_msg.linear.y = trans.y() + vel_target.y();
+                // vel_msg.linear.z = trans.z() + vel_target.z();
+                // vel_msg.angular.z = rpy.z() * rad_to_deg;
 
                 auto it = agents_comm.find(key);
                 if (it != agents_comm.end())
@@ -303,6 +323,13 @@ void cs2::cs2_application::handler_timer_callback()
                 vel_msg.linear.x = vel_target.x();
                 vel_msg.linear.y = vel_target.y();
                 vel_msg.linear.z = vel_target.z();
+                Eigen::Vector3d trans = agent.transform.translation();
+                // vel_msg.linear.x = trans.x() + vel_target.x() * 1/this->planning_rate;
+                // vel_msg.linear.y = trans.y() + vel_target.y() * 1/this->planning_rate;
+                // vel_msg.linear.z = trans.z() + vel_target.z() * 1/this->planning_rate;
+                // vel_msg.linear.x = trans.x() + vel_target.x();
+                // vel_msg.linear.y = trans.y() + vel_target.y();
+                // vel_msg.linear.z = trans.z() + vel_target.z();
 
                 // check the difference in heading
                 Eigen::Vector3d rpy = 
@@ -329,18 +356,19 @@ void cs2::cs2_application::handler_timer_callback()
                 }
                 else
                     yaw_target += rpy.z() * rad_to_deg;
+                // vel_msg.angular.z = yaw_target;
 
                 // std::cout << rpy.z() << "/" << wrap_pi(yaw_target) / rad_to_deg << std::endl;
                 // vel_msg.yaw = wrap_pi(yaw_target);
-                double yaw_rate_target;
-                if (wrap_pi(yaw_target) > 1e-5)
-                    yaw_rate_target = 0.1;
-                else if (wrap_pi(yaw_target) < -1e-5)
-                    yaw_rate_target = -0.1;
-                else
-                    yaw_rate_target = 0.0;
+                // double yaw_rate_target;
+                // if (wrap_pi(yaw_target) > 1e-5)
+                //     yaw_rate_target = 15;
+                // else if (wrap_pi(yaw_target) < -1e-5)
+                //     yaw_rate_target = -15;
+                // else
+                //     yaw_rate_target = 0.0;
                 // vel_msg.yaw_rate = yaw_rate_target;
-                vel_msg.angular.z = yaw_rate_target;
+                vel_msg.angular.z = 0;
                 // vel_msg.yaw = yaw_target;
                 // vel_msg.yaw = agent.target_yaw;
                 // vel_msg.yaw = 0.0;

@@ -261,7 +261,6 @@ namespace cs2
                 auto t_planning = (1/planning_rate) * 1000ms;
                 handler_timer = this->create_wall_timer(
                     t_planning, std::bind(&cs2_application::handler_timer_callback, this));
-
                 RCLCPP_INFO(this->get_logger(), "end_constructor");
 
                 // rotate z -90 then x -90 for it to be FRD

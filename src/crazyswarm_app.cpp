@@ -235,6 +235,10 @@ void cs2::cs2_application::user_callback(
                 agent_update_mutex.lock();
                 while (!iterator_states->second.target_queue.empty())
                     iterator_states->second.target_queue.pop();
+    
+                iterator_states->second.target_queue.push(
+                    Eigen::Vector3d(copy.goal.x, copy.goal.y, copy.goal.z)
+                );
 
                 iterator_states->second.flight_state = MOVE;
                 iterator_states->second.completed = false;
