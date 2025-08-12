@@ -37,6 +37,8 @@
 #include "crazyflie_interfaces/srv/go_to.hpp"
 #include "crazyflie_interfaces/srv/set_group_mask.hpp"
 #include "crazyflie_interfaces/msg/velocity_world.hpp"
+#include "crazyflie_interfaces/msg/full_state.hpp"
+#include "crazyflie_interfaces/msg/hover.hpp"
 
 //#include <gtsam/geometry/Pose3.h>
 
@@ -49,6 +51,8 @@ using crazyflie_interfaces::srv::Land;
 using crazyflie_interfaces::srv::GoTo;
 using crazyflie_interfaces::srv::SetGroupMask;
 using crazyflie_interfaces::msg::VelocityWorld;
+using crazyflie_interfaces::msg::Hover;
+using crazyflie_interfaces::msg::FullState;
 using geometry_msgs::msg::Twist;
 
 namespace common
@@ -59,7 +63,10 @@ namespace common
         rclcpp::Client<SetGroupMask>::SharedPtr set_group;
         rclcpp::Client<GoTo>::SharedPtr go_to;
         rclcpp::Client<Land>::SharedPtr land;
-        rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr vel_world_publisher;
+        //rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr vel_world_publisher;
+        rclcpp::Publisher<VelocityWorld>::SharedPtr vel_world_publisher;
+        //rclcpp::Publisher<FullState>::SharedPtr vel_world_publisher;
+        rclcpp::Publisher<Hover>::SharedPtr hover_world_publisher;
     };
 
     struct agent_state

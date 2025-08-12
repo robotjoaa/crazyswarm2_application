@@ -32,7 +32,9 @@
 #include "crazyflie_interfaces/srv/land.hpp"
 #include "crazyflie_interfaces/srv/go_to.hpp"
 #include "crazyflie_interfaces/srv/set_group_mask.hpp"
+#include "crazyflie_interfaces/msg/full_state.hpp"
 #include "crazyflie_interfaces/msg/velocity_world.hpp"
+#include "crazyflie_interfaces/msg/hover.hpp"
 
 #include "crazyswarm_application/msg/user_command.hpp"
 #include "crazyswarm_application/msg/agents_state_feedback.hpp"
@@ -215,8 +217,12 @@ namespace cs2
                         name + "/vel", 14, vcallback)});
 
                     tmp.vel_world_publisher = 
-                    //    this->create_publisher<VelocityWorld>(name + "/cmd_velocity_world", 25);
-                        this->create_publisher<geometry_msgs::msg::Twist>(name + "/cmd_vel_legacy", 25);
+                        this->create_publisher<VelocityWorld>(name + "/cmd_velocity_world", 25);
+                        //this->create_publisher<geometry_msgs::msg::Twist>(name + "/cmd_vel_legacy", 25);
+                        //this->create_publisher<FullState>(name + "/cmd_velocity_world", 25);
+
+                    tmp.hover_world_publisher = 
+                        this->create_publisher<Hover>(name + "/cmd_hover", 25);
 
                     agents_comm.insert({name, tmp});
                 
@@ -273,6 +279,16 @@ namespace cs2
             };
 
         private:
+            //VelocityWorld vel_msg1;
+            //VelocityWorld vel_msg2;
+            // struct 
+            // {
+            //     float x;
+            //     float y;
+            //     float z;
+            //     float yaw;
+            // }state_;
+            //FullState fullstate_;
 
             // parameters
             int max_queue_size;

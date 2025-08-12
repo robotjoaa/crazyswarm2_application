@@ -154,7 +154,7 @@ void cs2::cs2_application::handler_timer_callback()
     for (auto &[key, agent] : agents_states)
     {
         rclcpp::Time now = this->get_clock()->now();
-        // RCLCPP_INFO(this->get_logger(),"handler_timer_callback %s %ld",key.c_str(),agent.flight_state);
+        //RCLCPP_INFO(this->get_logger(),"handler_timer_callback %s %ld",key.c_str(),agent.flight_state);
         switch (agent.flight_state)
         {
             case IDLE: case EMERGENCY:
@@ -192,15 +192,13 @@ void cs2::cs2_application::handler_timer_callback()
                 // // vel_msg.yaw = agent.previous_yaw * rad_to_deg;
                 // vel_msg.yaw_rate = 0.0;
 
-                geometry_msgs::msg::Twist vel_msg;
-                //vel_msg.header.stamp = clock.now();
-                // vel_msg.linear.x = vel_target.x();
-                // vel_msg.linear.y = vel_target.y();
-                // vel_msg.linear.z = vel_target.z();
-                vel_msg.linear.x = 0.0;
-                vel_msg.linear.y = 0.0;
-                vel_msg.linear.z = 0.0;
-                vel_msg.angular.z = 0.0;
+                Hover hover_msg;
+                hover_msg.header.stamp = clock.now();
+                hover_msg.vx = 0;
+                hover_msg.vy = 0;
+                hover_msg.yaw_rate = 0;
+                // hover_msg.z_distance = trans.z();
+                hover_msg.z_distance = 1.0;
 
 
                 // vel_msg.linear.x = trans.x() + vel_target.x() * 1/this->planning_rate;
@@ -215,7 +213,8 @@ void cs2::cs2_application::handler_timer_callback()
 
                 auto it = agents_comm.find(key);
                 if (it != agents_comm.end())
-                    it->second.vel_world_publisher->publish(vel_msg);
+                    //it->second.vel_world_publisher->publish(vel_msg);
+                    it->second.hover_world_publisher->publish(hover_msg);
                 
                 // agent.completed = false;
                 break;
@@ -259,6 +258,7 @@ void cs2::cs2_application::handler_timer_callback()
 
                 if (agent.target_queue.empty())
                 {
+                    RCLCPP_INFO(this->get_logger(), "MOVE VELOCITY no target");
                     // move velocity
                     if (agent.flight_state == MOVE_VELOCITY)
                     {
@@ -281,8 +281,9 @@ void cs2::cs2_application::handler_timer_callback()
                 double pose_difference = 
                     (agent.target_queue.front() - agent.transform.translation()).norm();
 
-                // VelocityWorld vel_msg;
-                geometry_msgs::msg::Twist vel_msg;
+                //VelocityWorld vel_msg;
+                //geometry_msgs::msg::Twist vel_msg;
+                //Hover hover_msg;
                 Eigen::Vector3d vel_target;
                 // // vel_msg.height = agent.target_queue.front().z();
 
@@ -309,53 +310,136 @@ void cs2::cs2_application::handler_timer_callback()
                         (agent.target_queue.front() - agent.transform.translation()).normalized() * max_velocity;
                 }
 
-                conduct_planning(vel_target, key, agent);
+                // conduct_planning(vel_target, key, agent);
 
                 double duration_seconds = (clock.now() - start).seconds();
                 RCLCPP_INFO(this->get_logger(), "go_to_velocity %s (%.3lf %.3lf %.3lf) time (%.3lfms)", 
                     key.c_str(), vel_target.x(), vel_target.y(), vel_target.z(), duration_seconds * 1000.0);
 
+                // bool use_1 = false; 
+                // if(strcmp(key.c_str(), "cf_1") == 0)
+                //     use_1 = true;
+                // VelocityWorld &vel_msg = (use_1 ? vel_msg1 : vel_msg2);
+                // Eigen::Vector3d trans = agent.transform.translation();
+                // float twist_x = 0.3;
+                // float twist_y = 0.3;
+                // float twist_z = 0.0;
+                // float dt_ = 0.125;
+                // float prev_x = trans.x();
+                // float prev_y = trans.y();
+                // float prev_z = trans.z();
+                // float state_x = prev_x + twist_x*dt_;
+                // float state_y = prev_y + twist_y*dt_;
+                // float state_z = prev_z + twist_z*dt_;
+                // Eigen::Vector3d rpy = euler_rpy(agent.transform.linear());
+                // float state_yaw = rpy.z();
+
+                // Eigen::Quaternionf q;
+                // q = AngleAxisf(0, Vector3f::UnitX())
+                // * AngleAxisf(0, Vector3f::UnitY())
+                // * AngleAxisf(state_yaw, Vector3f::UnitZ());
+
+                // fullstate_.pose.position.x = state_x; 
+                // fullstate_.pose.position.y = state_y;
+                // fullstate_.pose.position.z = state_z;
+                // fullstate_.twist.linear.x = (state_x-prev_x)/dt_;
+                // fullstate_.twist.linear.y = (state_y-prev_y)/dt_;
+                // fullstate_.twist.linear.z = (state_z-prev_z)/dt_;
+                // fullstate_.acc.x = 0;
+                // fullstate_.acc.y = 0;
+                // fullstate_.acc.z = 0;
+                // fullstate_.pose.orientation.x = q.x(); 
+                // fullstate_.pose.orientation.y = q.y();
+                // fullstate_.pose.orientation.z = q.z();
+                // fullstate_.pose.orientation.w = q.w();
+                // fullstate_.twist.angular.x = 0;       
+                // fullstate_.twist.angular.y = 0;       
+                // fullstate_.twist.angular.z = 0; // yaw rate 
+
+
+                // auto it = agents_comm.find(key);
+                // if (it != agents_comm.end())
+                //     it->second.vel_world_publisher->publish(fullstate_);
+                //     RCLCPP_INFO(this->get_logger(), "MOVE VELOCITY published %s", key.c_str());
+
+                // if(strcmp(key.c_str(), "cf_1") == 0){
+                //     vel_msg1.header.stamp = clock.now();
+                //     vel_msg1.vel.x = -0.1;
+                //     vel_msg1.vel.y = 0.1;
+                //     vel_msg1.vel.z = 0.0;
+                //     vel_msg1.yaw_rate = 0.0;
+                //     auto it = agents_comm.find(key);
+                //     if (it != agents_comm.end())
+                //         it->second.vel_world_publisher->publish(vel_msg1);
+                //     RCLCPP_INFO(this->get_logger(), "MOVE VELOCITY published cf_1");
+                // }
+                // else{
+                //     vel_msg2.header.stamp = clock.now();
+                //     vel_msg2.vel.x = 0.1;
+                //     vel_msg2.vel.y = -0.1;
+                //     vel_msg2.vel.z = 0.0;
+                //     vel_msg2.yaw_rate = 0.0;
+                //     auto it = agents_comm.find(key);
+                //     if (it != agents_comm.end())
+                //         it->second.vel_world_publisher->publish(vel_msg2);
+                //     RCLCPP_INFO(this->get_logger(), "MOVE VELOCITY published cf_2");
+                // }
+                VelocityWorld vel_msg;
+
+                vel_msg.header.stamp = clock.now();
+                vel_msg.vel.x = 0.1;
+                vel_msg.vel.y = 0.1;
+                vel_msg.vel.z = 0.0;
+                vel_msg.yaw_rate = 0.0;
+                // // vel_msg.vel.x = vel_target.x();
+                // // vel_msg.vel.y = vel_target.y();
+                // // vel_msg.vel.z = vel_target.z();
+               
                 // vel_msg.header.stamp = clock.now();
-                // vel_msg.vel.x = vel_target.x();
-                // vel_msg.vel.y = vel_target.y();
-                // vel_msg.vel.z = vel_target.z();
-                // vel_msg.header.stamp = clock.now();
-                vel_msg.linear.x = vel_target.x();
-                vel_msg.linear.y = vel_target.y();
-                vel_msg.linear.z = vel_target.z();
-                Eigen::Vector3d trans = agent.transform.translation();
+                // vel_msg.linear.x = vel_target.x();
+                // vel_msg.linear.y = vel_target.y();
+                // vel_msg.linear.z = vel_target.z();
+
+                // hover_msg.header.stamp = clock.now();
+                // hover_msg.vx = vel_target.x();
+                // hover_msg.vy = vel_target.y();
+                // hover_msg.yaw_rate = 0;
+                // Eigen::Vector3d trans = agent.transform.translation();
+                // hover_msg.z_distance = 1.0;
+
+               
                 // vel_msg.linear.x = trans.x() + vel_target.x() * 1/this->planning_rate;
                 // vel_msg.linear.y = trans.y() + vel_target.y() * 1/this->planning_rate;
                 // vel_msg.linear.z = trans.z() + vel_target.z() * 1/this->planning_rate;
                 // vel_msg.linear.x = trans.x() + vel_target.x();
                 // vel_msg.linear.y = trans.y() + vel_target.y();
                 // vel_msg.linear.z = trans.z() + vel_target.z();
-
-                // check the difference in heading
-                Eigen::Vector3d rpy = 
-                    euler_rpy(agent.transform.linear());
                 
-                double yaw_target;
-                if (agent.target_yaw - rpy.z() * rad_to_deg < -180.0)
-                    yaw_target = agent.target_yaw - (rpy.z() * rad_to_deg - 360.0);
-                else if (agent.target_yaw - rpy.z() * rad_to_deg > 180.0)
-                    yaw_target = agent.target_yaw - (rpy.z() * rad_to_deg + 360.0);
-                else
-                    yaw_target = agent.target_yaw - rpy.z() * rad_to_deg;
+                // check the difference in heading
+                // Eigen::Vector3d rpy = 
+                //     euler_rpy(agent.transform.linear());
+                
+                // double yaw_target;
+                // if (agent.target_yaw - rpy.z() * rad_to_deg < -180.0)
+                //     yaw_target = agent.target_yaw - (rpy.z() * rad_to_deg - 360.0);
+                // else if (agent.target_yaw - rpy.z() * rad_to_deg > 180.0)
+                //     yaw_target = agent.target_yaw - (rpy.z() * rad_to_deg + 360.0);
+                // else
+                //     yaw_target = agent.target_yaw - rpy.z() * rad_to_deg;
 
-                // std::cout << yaw_target << std::endl;
-                double dir = yaw_target / std::abs(yaw_target);
-                if (!std::isnan(dir))
-                {
-                    yaw_target = std::min(std::abs(yaw_target), maximum_yaw_change);                
-                    yaw_target *= dir;
-                    if (std::abs(yaw_target - agent.target_yaw) > maximum_yaw_change * 1.5)
-                        yaw_target += rpy.z() * rad_to_deg;
-                    else
-                        yaw_target = agent.target_yaw;
-                }
-                else
-                    yaw_target += rpy.z() * rad_to_deg;
+                // // std::cout << yaw_target << std::endl;
+                // double dir = yaw_target / std::abs(yaw_target);
+                // if (!std::isnan(dir))
+                // {
+                //     yaw_target = std::min(std::abs(yaw_target), maximum_yaw_change);                
+                //     yaw_target *= dir;
+                //     if (std::abs(yaw_target - agent.target_yaw) > maximum_yaw_change * 1.5)
+                //         yaw_target += rpy.z() * rad_to_deg;
+                //     else
+                //         yaw_target = agent.target_yaw;
+                // }
+                // else
+                //     yaw_target += rpy.z() * rad_to_deg;
                 // vel_msg.angular.z = yaw_target;
 
                 // std::cout << rpy.z() << "/" << wrap_pi(yaw_target) / rad_to_deg << std::endl;
@@ -368,7 +452,7 @@ void cs2::cs2_application::handler_timer_callback()
                 // else
                 //     yaw_rate_target = 0.0;
                 // vel_msg.yaw_rate = yaw_rate_target;
-                vel_msg.angular.z = 0;
+                // vel_msg.angular.z = 0;
                 // vel_msg.yaw = yaw_target;
                 // vel_msg.yaw = agent.target_yaw;
                 // vel_msg.yaw = 0.0;
@@ -376,6 +460,10 @@ void cs2::cs2_application::handler_timer_callback()
                 auto it = agents_comm.find(key);
                 if (it != agents_comm.end())
                     it->second.vel_world_publisher->publish(vel_msg);
+                    RCLCPP_INFO(this->get_logger(), "MOVE VELOCITY published");
+
+                // if (it != agents_comm.end())
+                //     it->second.hover_world_publisher->publish(hover_msg);
                 break;
             }
 
