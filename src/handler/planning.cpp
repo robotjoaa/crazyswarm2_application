@@ -278,9 +278,14 @@ void cs2::cs2_application::handler_timer_callback()
                     
                     break;
                 }
+
+                Eigen::Vector3d trans = agent.transform.translation();
                 double pose_difference = 
                     (agent.target_queue.front() - agent.transform.translation()).norm();
-
+                Eigen::Vector3d goal = agent.target_queue.front();
+                RCLCPP_INFO(this->get_logger(), "[Goto Velocity] %s pose diff : %.3lf, goal : (%.3lf %.3lf %.3lf), agent : (%.3lf %.3lf %.3lf)", 
+                    key.c_str(), pose_difference, goal.x(), goal.y(), goal.z(), \
+                    trans.x(), trans.y(), trans.z());
                 //VelocityWorld vel_msg;
                 //geometry_msgs::msg::Twist vel_msg;
                 //Hover hover_msg;
@@ -391,10 +396,11 @@ void cs2::cs2_application::handler_timer_callback()
                 vel_msg.vel.y = 0.1;
                 vel_msg.vel.z = 0.0;
                 vel_msg.yaw_rate = 0.0;
-                // // vel_msg.vel.x = vel_target.x();
-                // // vel_msg.vel.y = vel_target.y();
-                // // vel_msg.vel.z = vel_target.z();
-               
+                // vel_msg.vel.x = vel_target.x();
+                // vel_msg.vel.y = vel_target.y();
+                // vel_msg.vel.z = vel_target.z();
+                // vel_msg.yaw_rate = 0.0;
+
                 // vel_msg.header.stamp = clock.now();
                 // vel_msg.linear.x = vel_target.x();
                 // vel_msg.linear.y = vel_target.y();

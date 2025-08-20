@@ -280,9 +280,9 @@ void cs2::cs2_application::pose_callback(
     std::map<std::string, agent_state>::iterator state)
 {
     PoseStamped copy = *msg;
-    // auto pos = state->second.transform.translation();
-    // RCLCPP_INFO(this->get_logger(), "(%s) %lf %lf %lf", state->first.c_str(), 
-    //     pos[0], pos[1], pos[2]);
+    auto pos = state->second.transform.translation();
+    RCLCPP_INFO(this->get_logger(), "Pose callback : (%s) %lf %lf %lf", state->first.c_str(), 
+        pos[0], pos[1], pos[2]);
 
     agent_update_mutex.lock();
 
