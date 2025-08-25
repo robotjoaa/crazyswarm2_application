@@ -71,7 +71,7 @@ class RvizVisualizer : public rclcpp::Node
 
         rclcpp::TimerBase::SharedPtr visualizing_timer;
 
-        std::string mesh_path;
+        //std::string mesh_path;
 
         tf2_ros::TransformBroadcaster tf2_bc;
 
@@ -288,7 +288,7 @@ class RvizVisualizer : public rclcpp::Node
             visualizing_timer = this->create_wall_timer(
                 1000ms, std::bind(&RvizVisualizer::visualizing_timer_callback, this));
         
-            this->declare_parameter("mesh_path", "");
+            //this->declare_parameter("mesh_path", "");
             this->declare_parameter("concave_obstacles", false);
             this->declare_parameter("visibility_expansion_factor", 1.0);
             this->declare_parameter("orca_static_expansion_factor", 1.0);
@@ -298,8 +298,8 @@ class RvizVisualizer : public rclcpp::Node
             orca_static_expansion_factor = 
                 this->get_parameter("orca_static_expansion_factor").get_parameter_value().get<double>();
             
-            mesh_path = 
-                this->get_parameter("mesh_path").get_parameter_value().get<std::string>();
+            //mesh_path = 
+            //    this->get_parameter("mesh_path").get_parameter_value().get<std::string>();
             concave_obstacles = 
                 this->get_parameter("concave_obstacles").get_parameter_value().get<bool>();
 

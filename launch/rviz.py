@@ -9,11 +9,11 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
 
-    # get mesh path
-    april_tag_path = os.path.join(
-        get_package_share_directory('crazyswarm_application'),
-        'meshes',
-        'master.dae')
+    # # get mesh path
+    # april_tag_path = os.path.join(
+    #     get_package_share_directory('crazyswarm_application'),
+    #     'meshes',
+    #     'master.dae')
 
     # load swarm_manager parameters
     config_yaml = os.path.join(
@@ -38,7 +38,8 @@ def generate_launch_description():
         environment = yaml.safe_load(ymlfile)
 
     # config = [environment] + [{'mesh_path': april_tag_path}]
-    config = [environment] + [{'mesh_path': april_tag_path}] + [config]
+    # config = [environment] + [{'mesh_path': april_tag_path}] + [config]
+    config = [environment] + [config]
 
     ld = LaunchDescription()
 

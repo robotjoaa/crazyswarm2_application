@@ -20,7 +20,7 @@ queue_size: 20
 # add in the environment file name here
 # environment_file: ""
 # environment_file: "safmc.yaml"
-environment_file: "lab.yaml"
+environment_file: "arena.yaml"
 external_timeout: 4.0
 # 1 corrugated board: length(x) 1.22, width(y) 2.454, 
 # together (2 corrugated board + A3): length(x) 2.737, width(y) 2.454
@@ -43,14 +43,14 @@ trajectory_parameters:
   protected_zone: 0.275
   planning_horizon_scale: 3.0
   height_range: [0.5, 2.0]
-april_tag_parameters:
-  # 45 degs pointing downwards
-  camera_rotation: [ 0, 0.3826834, 0, 0.9238795 ] # x,y,z,w
-  time_threshold: 0.025
-  observation_threshold: 1.82
-  observation_limit: 1
-  is_z_out: true
-  center_origin: false
+# april_tag_parameters:
+#   # 45 degs pointing downwards
+#   camera_rotation: [ 0, 0.3826834, 0, 0.9238795 ] # x,y,z,w
+#   time_threshold: 0.025
+#   observation_threshold: 1.82
+#   observation_limit: 1
+#   is_z_out: true
+#   center_origin: false
 sim:
   hfov: 75.0 # deg
   vfov: 50.0 # deg
