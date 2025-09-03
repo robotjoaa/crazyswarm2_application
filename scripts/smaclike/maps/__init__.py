@@ -1,0 +1,1 @@
+from smaclike.maps.map import Group, MapInfo, MapPreset

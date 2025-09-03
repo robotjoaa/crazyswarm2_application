@@ -1,0 +1,20 @@
+{
+    "name": "test_2vs1",
+    "num_allied_units": 2,
+    "num_enemy_units": 1,
+    "groups": [
+        {
+            "x": 1.0, "y": 1.0, "z": 1.8, "roll":0, "pitch":0, "yaw":-2.36, "faction": "ALLY", "units": {"DRONE" : 1}
+
+        },
+        {
+            "x": -1.0, "y": -1.0, "z": 2.2, "roll":0, "pitch":0, "yaw":0.78, "faction": "ALLY", "units": {"DRONE" : 1}
+
+        },
+        {
+            "x": 0.0, "y": 0.0, "z": 2, "roll":0, "pitch":0, "yaw":-0.78, "faction": "ENEMY", "units": {"STRONG_DRONE" : 1}
+        }
+    ],
+    "attack_point": [[0, 0, 2.0]],
+    "obstacle_preset": "BOX"
+}

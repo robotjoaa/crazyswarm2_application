@@ -372,3 +372,8 @@ void cs2::cs2_application::send_land_and_update(
     s->second.flight_state = LAND;
     s->second.completed = false;
 }
+
+int cs2::cs2_application::id_from_key(std::string key, int remove){
+    key.erase(0,remove);
+    return std::stoi(key);
+}

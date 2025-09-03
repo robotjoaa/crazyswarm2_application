@@ -375,7 +375,10 @@ namespace RVO
         u = (combinedRadius * invTimeStep - wLength) * unitW;
       }
 
-      plane.point = velocity_ + 0.5F * u;
+      if (other.type_ == OBSTACLE) // for static obstacle 
+        plane.point = velocity_ + u;
+      else 
+        plane.point = velocity_ + 0.5F * u;
       orcaPlanes_.push_back(plane);
     }
 
@@ -399,7 +402,36 @@ namespace RVO
   void Agent::clearAgentNeighbor() {
 
     agentNeighbors_.clear();
+    is_visibleValid_ = false;
+    //visibleAllies_.clear();
+    //visibleEnemies_.clear(); 
   }
+  
+  const std::vector<std::pair<float, const Eval_agent>>& Agent::getNeighbors(AgentType option){
+    switch(option){
+      case ALLY : 
+        return visibleAllies_;
+      case ENEMY : 
+        return visibleEnemies_;
+      default : 
+        return agentNeighbors_;
+    }
+  }
+
+  void Agent::updateVisibility(float rangeSq){
+    visibleAllies_.clear();
+    visibleEnemies_.clear(); 
+    for (const auto& it : agentNeighbors_){
+      if (it.first < rangeSq){
+        if (it.second.type_ == ALLY)
+          visibleAllies_.push_back(it);
+        else if (it.second.type_ == ENEMY)
+          visibleEnemies_.push_back(it);
+      }
+    }
+    is_visibleValid_ = true;
+  }
+
 
   void Agent::update() 
   {

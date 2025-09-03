@@ -1,0 +1,11 @@
+{
+    "hp": 45,
+    "energy": 100,
+    "starting_energy": 100,
+    "damage": 12,
+    "cooldown": 0.61,
+    "speed": 0.8,
+    "ang_speed": 1,
+    "attack_range": 1,
+    "size": 0.3
+}

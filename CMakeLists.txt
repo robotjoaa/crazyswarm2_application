@@ -128,4 +128,10 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}/
 )
 
+# Install python executables
+install(
+  PROGRAMS scripts/smaclike.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()

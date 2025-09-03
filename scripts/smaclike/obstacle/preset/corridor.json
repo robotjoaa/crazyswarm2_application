@@ -1,0 +1,11 @@
+{
+    "map_size" : [4,2,3],
+    "obstacle_dict": [
+        {"shape": "square", "pos": [2.2,0,1.5], "ori": [0,0,0,1], "size": [0.4,2,3]},
+        {"shape": "square", "pos": [0,1.2,1.5], "ori": [0,0,0,1], "size": [4,0.4,3]},
+        {"shape": "square", "pos": [-2.2,0,1.5], "ori": [0,0,0,1], "size": [0.4,2,3]},
+        {"shape": "square", "pos": [0,-1.2,1.5], "ori": [0,0,0,1], "size": [4,0.4,3]},
+        {"shape": "square", "pos": [0,0,3.2], "ori": [0,0,0,1], "size": [4,2,0.4]},
+        {"shape": "square", "pos": [0,0,-0.2], "ori": [0,0,0,1], "size": [4,2,0.4]}
+    ]
+}

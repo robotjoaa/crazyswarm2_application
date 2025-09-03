@@ -1,0 +1,27 @@
+{
+    "name": "3_vs_3box",
+    "num_allied_units": 3,
+    "num_enemy_units": 3,
+    "groups": [
+        {
+            "x": 0.5, "y": 1.0, "z": 1.5, "roll":0, "pitch":0, "yaw":0, "faction": "ALLY", "units": {"DRONE":1}
+        },
+        {
+            "x": 0.5, "y": 0, "z": 1.5, "roll":0, "pitch":0, "yaw":0,  "faction": "ALLY", "units": {"DRONE":1}
+        },
+        {
+            "x": 0.5, "y": -1.0, "z": 1.5, "roll":0, "pitch":0, "yaw":0, "faction": "ALLY", "units": {"DRONE":1}
+        },
+        {
+            "x": -0.5, "y": 0.5, "z": 1.5, "roll":0, "pitch":0, "yaw":0, "faction": "ENEMY", "units": {"DRONE":1}
+        },
+        {
+            "x": -0.5, "y": 0.0, "z": 1.5, "roll":0, "pitch":0, "yaw":0, "faction": "ENEMY", "units": {"DRONE":1}
+        },
+        {
+            "x": -0.5, "y": -0.5, "z": 1.5, "roll":0, "pitch":0, "yaw":0, "faction": "ENEMY", "units": {"DRONE":1}
+        }
+    ],
+    "attack_point": [[0, 0, 1.5], [0, 0, 2], [0, 0, 2.5]],
+    "obstacle_preset": "BOX"
+}

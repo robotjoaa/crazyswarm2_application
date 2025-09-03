@@ -48,6 +48,10 @@
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "geometry_msgs/msg/point.hpp"
 
+// visualize obstacle
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
+
 #include "visualization_msgs/msg/marker_array.hpp"
 #include "visualization_msgs/msg/marker.hpp"
 
@@ -77,6 +81,7 @@ using geometry_msgs::msg::PoseStamped;
 using geometry_msgs::msg::Point;
 using geometry_msgs::msg::Twist;
 using geometry_msgs::msg::TransformStamped;
+using sensor_msgs::msg::PointCloud2;
 
 using crazyswarm_application::msg::NamedPoseArray;
 using crazyswarm_application::msg::NamedPose;
@@ -95,6 +100,7 @@ using namespace RVO;
 
 namespace cs2
 {
+
     class cs2_application : public rclcpp::Node
     {
         public:
@@ -159,9 +165,15 @@ namespace cs2
                     this->get_parameter("orca_static_expansion_factor").get_parameter_value().get<double>();
                 log_path = 
                     this->get_parameter("log_path").get_parameter_value().get<std::string>();
-
                 height_range = 
                     std::make_pair(height_range_vector[0], height_range_vector[1]);
+
+                // TODO : get this as parameter from config 
+                // smaclike
+                int NUM_DRONES = 2;
+                // n_agents / n_enemies
+                int n_agents = 1;
+                int n_enemies = NUM_DRONES - n_agents;
 
                 // load crazyflies from params
                 auto node_parameters_iface = this->get_node_parameters_interface();
@@ -173,10 +185,8 @@ namespace cs2
                 {
                     RCLCPP_INFO(this->get_logger(), "creating agent map for '%s'", name.c_str());
 
-                    std::string str_copy = name;
                     // Remove cf_ from cf_XX
-                    str_copy.erase(0,3);
-                    int id = std::stoi(str_copy);
+                    int id = id_from_key(name);
                     
                     std::vector<double> pos = parameter_overrides.at("robots." + name + ".initial_position").get<std::vector<double>>();
                     bool mission_capable = parameter_overrides.at("robots." + name + ".mission_capable").get<bool>();
@@ -224,6 +234,9 @@ namespace cs2
                     tmp.hover_world_publisher = 
                         this->create_publisher<Hover>(name + "/cmd_hover", 25);
 
+                    tmp.cloud_publisher = 
+                        this->create_publisher<PointCloud2>(name + "/obstacles", 25);
+
                     agents_comm.insert({name, tmp});
                 
                     Agent new_rvo2_agent = Agent(
@@ -254,7 +267,7 @@ namespace cs2
                 
                 target_publisher = 
                     this->create_publisher<MarkerArray>("targets", 7);
-                
+
                 agent_state_publisher = 
                     this->create_publisher<AgentsStateFeedback>("agents", 7);
 
@@ -279,16 +292,6 @@ namespace cs2
             };
 
         private:
-            //VelocityWorld vel_msg1;
-            //VelocityWorld vel_msg2;
-            // struct 
-            // {
-            //     float x;
-            //     float y;
-            //     float z;
-            //     float yaw;
-            // }state_;
-            //FullState fullstate_;
 
             // parameters
             int max_queue_size;
@@ -305,6 +308,12 @@ namespace cs2
             double communication_radius;
             double protected_zone;
             double planning_horizon_scale;
+
+            // TODO : get this as parameter from config 
+            // smaclike
+            int NUM_DRONES;
+            int n_agents;
+            int n_enemies;
             // threshold parameters
             double time_threshold;
             double observation_threshold;
@@ -356,6 +365,9 @@ namespace cs2
             rclcpp::Publisher<AgentsStateFeedback>::SharedPtr agent_state_publisher;
             rclcpp::Publisher<MarkerArray>::SharedPtr target_publisher;
             
+            // void conduct_planning(
+            //     Eigen::Vector3d &desired, std::vector<std::pair<float, const Eval_agent>> &neighbors, std::string mykey, agent_state state);
+
             void conduct_planning(
                 Eigen::Vector3d &desired, std::string mykey, agent_state state);
 
@@ -375,5 +387,11 @@ namespace cs2
             void send_land_and_update(
                 std::map<std::string, agent_state>::iterator s,
                 std::map<std::string, agent_struct>::iterator c);
+            
+            // helper function
+            int id_from_key(std::string key, int remove = 3);
+
+            std::unique_ptr<PointCloud2> convert_cloud(
+                const std::vector<std::pair<float, const Eval_agent>>& obstacles);
     };
 }

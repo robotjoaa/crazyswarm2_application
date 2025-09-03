@@ -21,6 +21,7 @@
 void cs2::cs2_application::conduct_planning(
     Eigen::Vector3d &desired, std::string mykey, agent_state state) 
 {
+    bool my_faction = (id_from_key(mykey) <= this->n_agents); 
     auto it = rvo_agents.find(mykey);
     if (it == rvo_agents.end())
         return;
@@ -38,6 +39,8 @@ void cs2::cs2_application::conduct_planning(
             node->position_ = agent.transform.translation().cast<float>();
             node->velocity_ = agent.velocity.cast<float>();
             node->radius_ = (float)protected_zone;
+            bool faction = (id_from_key(key) <= this->n_agents);
+            node->type_ = (my_faction != faction) ? ENEMY : ALLY;
             int v = kd_insert3(
                 kd_tree, node->position_.x(), 
                 node->position_.y(), node->position_.z(),
@@ -119,6 +122,7 @@ void cs2::cs2_application::conduct_planning(
                             static_point.position_ = pos.cast<float>();
                             static_point.velocity_ = Eigen::Vector3f::Zero();
                             static_point.radius_ = (float)protected_zone/3;
+                            static_point.type_ = OBSTACLE; // static obstacle
                             it->second.insertAgentNeighbor(static_point, communication_radius_float);
                         }
                         // std::cout << mykey << " obstacle_static " << static_point.position_.transpose() << std::endl;
@@ -130,13 +134,15 @@ void cs2::cs2_application::conduct_planning(
 
     if (!it->second.noNeighbours())
     {
+        // assign neighbors
+        // const auto &tmp = it->second.getNeighbors();
         agent_update_mutex.lock();
         it->second.updateState(
             state.transform.translation().cast<float>(), 
             state.velocity.cast<float>(), 
             desired.cast<float>());
         agent_update_mutex.unlock();
-
+        
         it->second.computeNewVelocity();
         Eigen::Vector3f new_desired = it->second.getVelocity();
         desired = new_desired.cast<double>();
@@ -180,9 +186,9 @@ void cs2::cs2_application::handler_timer_callback()
                         (agent.previous_target - agent.transform.translation()).normalized() * max_velocity;
                 RCLCPP_INFO(this->get_logger(), "%s hover before : %.3lf %.3lf %.3lf", 
                     key.c_str(), vel_target.x(), vel_target.y(), vel_target.z());
-                conduct_planning(vel_target, key, agent);
-                RCLCPP_INFO(this->get_logger(), "%s hover after : %.3lf %.3lf %.3lf",
-                    key.c_str(), vel_target.x(), vel_target.y(), vel_target.z());
+                // conduct_planning(vel_target, key, agent);
+                // RCLCPP_INFO(this->get_logger(), "%s hover after : %.3lf %.3lf %.3lf",
+                //     key.c_str(), vel_target.x(), vel_target.y(), vel_target.z());
                 // VelocityWorld vel_msg;
                 // vel_msg.header.stamp = clock.now();
                 // vel_msg.vel.x = vel_target.x();
@@ -212,11 +218,11 @@ void cs2::cs2_application::handler_timer_callback()
                 // vel_msg.angular.z = rpy.z() * rad_to_deg;
 
                 auto it = agents_comm.find(key);
-                if (it != agents_comm.end())
+                if (it != agents_comm.end()){
                     //it->second.vel_world_publisher->publish(vel_msg);
                     it->second.hover_world_publisher->publish(hover_msg);
-                
                 // agent.completed = false;
+                }
                 break;
             }
             case TAKEOFF: case LAND: case MOVE:
@@ -367,10 +373,15 @@ void cs2::cs2_application::handler_timer_callback()
                 vel_msg.yaw_rate = yaw_rate_target;
                 
                 auto it = agents_comm.find(key);
-                if (it != agents_comm.end())
+                if (it != agents_comm.end()){
                     it->second.vel_world_publisher->publish(vel_msg);
-                    RCLCPP_INFO(this->get_logger(), "MOVE VELOCITY published");
-
+                    
+                    //publish neighbor
+                    auto rvo_it = rvo_agents.find(key);
+                    auto cloud_msg = convert_cloud(rvo_it->second.getNeighbors());
+                    it->second.cloud_publisher->publish(std::move(cloud_msg));
+                    //RCLCPP_INFO(this->get_logger(), "MOVE VELOCITY published");
+                }
                 break;
             }
 
@@ -381,8 +392,7 @@ void cs2::cs2_application::handler_timer_callback()
 
         std::string str_copy = key;
         // Remove cf_ from cf_XX
-        str_copy.erase(0,3);
-        int id = std::stoi(str_copy);
+        int id = cs2::cs2_application::id_from_key(key);
 
         Marker target;
         target.header.frame_id = "/world";
@@ -443,3 +453,32 @@ void cs2::cs2_application::handler_timer_callback()
     // publish the target data
     target_publisher->publish(target_array);
 }
+
+std::unique_ptr<PointCloud2> cs2::cs2_application::convert_cloud(
+    const std::vector<std::pair<float, const Eval_agent>>& obstacles)
+    {
+    auto cloud_msg = std::make_unique<sensor_msgs::msg::PointCloud2>();
+    cloud_msg->header.frame_id = "/world";    
+    cloud_msg->header.stamp = clock.now();
+    cloud_msg->height = 1;
+    cloud_msg->width = obstacles.size();
+    cloud_msg->is_dense = false;
+
+    // Define fields x,y,z
+    sensor_msgs::PointCloud2Modifier modifier(*cloud_msg);
+    modifier.setPointCloud2FieldsByString(1, "xyz");
+    modifier.resize(obstacles.size());
+
+    // Fill in data
+    sensor_msgs::PointCloud2Iterator<float> iter_x(*cloud_msg, "x");
+    sensor_msgs::PointCloud2Iterator<float> iter_y(*cloud_msg, "y");
+    sensor_msgs::PointCloud2Iterator<float> iter_z(*cloud_msg, "z");
+
+    for (const auto& obs : obstacles) {
+        *iter_x = obs.second.position_.x();
+        *iter_y = obs.second.position_.y();
+        *iter_z = obs.second.position_.z();
+        ++iter_x; ++iter_y; ++iter_z;
+    }
+    return cloud_msg;
+}   

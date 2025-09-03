@@ -37,6 +37,9 @@
 # vscode
 *.vscode
 
+# python
+__pycache__/
+
 launch/mission/*
 
 !launch/mission/agent_high.yaml

@@ -68,11 +68,18 @@ namespace RVO
     Eigen::Vector3f normal;
   };
 
+  enum AgentType{
+    ALLY,
+    ENEMY,
+    OBSTACLE,
+  };
+  
   struct Eval_agent
   {
     Eigen::Vector3f position_;
     Eigen::Vector3f velocity_;
     float radius_;
+    AgentType type_; 
   };
 
   /**
@@ -155,9 +162,19 @@ namespace RVO
       Eigen::Vector3f getVelocity() {return newVelocity_;};
 
       bool noNeighbours() {return agentNeighbors_.empty();};
+      
+      /* find_neighbor */
+      // update visible_ally / enemy 
+      void updateVisibility(float rangeSq);
+
+      // getter for neighbors
+      const std::vector<std::pair<float, const Eval_agent>>& getNeighbors(AgentType option = OBSTACLE);
+
+      bool isneighborValid() {return is_visibleValid_;};
 
       void updateState(Eigen::Vector3f pos, 
         Eigen::Vector3f vel, Eigen::Vector3f pref_vel);
+
 
     private:
 
@@ -181,8 +198,12 @@ namespace RVO
       float minHeight_;
       float maxHeight_;
       std::vector<std::pair<float, const Eval_agent>> agentNeighbors_;
-      std::vector<Plane> orcaPlanes_;
 
+      // smaclike
+      bool is_visibleValid_;
+      std::vector<std::pair<float, const Eval_agent>> visibleAllies_;
+      std::vector<std::pair<float, const Eval_agent>> visibleEnemies_;
+      std::vector<Plane> orcaPlanes_;
   };
 } /* namespace RVO */
 

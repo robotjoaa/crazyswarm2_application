@@ -33,6 +33,9 @@
 #include "std_srvs/srv/empty.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 
+// visualize obstacle
+#include <sensor_msgs/msg/point_cloud2.hpp>
+
 #include "crazyflie_interfaces/srv/land.hpp"
 #include "crazyflie_interfaces/srv/go_to.hpp"
 #include "crazyflie_interfaces/srv/set_group_mask.hpp"
@@ -53,7 +56,9 @@ using crazyflie_interfaces::srv::SetGroupMask;
 using crazyflie_interfaces::msg::VelocityWorld;
 using crazyflie_interfaces::msg::Hover;
 using crazyflie_interfaces::msg::FullState;
+
 using geometry_msgs::msg::Twist;
+using sensor_msgs::msg::PointCloud2;
 
 namespace common
 {
@@ -67,6 +72,8 @@ namespace common
         rclcpp::Publisher<VelocityWorld>::SharedPtr vel_world_publisher;
         //rclcpp::Publisher<FullState>::SharedPtr vel_world_publisher;
         rclcpp::Publisher<Hover>::SharedPtr hover_world_publisher;
+        //neighbor publisher
+        rclcpp::Publisher<PointCloud2>::SharedPtr cloud_publisher;
     };
 
     struct agent_state
@@ -162,6 +169,8 @@ namespace common
         std::vector<visibility_graph::obstacle> &obstacle_map, bool concave);
 
     double wrap_pi(double x);
+
+
 }
 
 #endif
