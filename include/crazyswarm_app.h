@@ -262,6 +262,12 @@ namespace cs2
                 orca_obstacle_map.obs = orca_obstacle_list;
                 orca_obstacle_map.inflation = protected_zone;
 
+                load_obstacle_map(
+                    parameter_overrides, orca_static_expansion_factor, 
+                    def_obstacle_list, concave_obstacles);
+                
+                
+
                 pose_publisher = 
                     this->create_publisher<NamedPoseArray>("poses", 7);
                 
@@ -332,6 +338,8 @@ namespace cs2
 
             visibility_graph::global_map visibility_obstacle_map;
             visibility_graph::global_map orca_obstacle_map;
+            std::vector<visibility_graph::obstacle> def_obstacle_list;
+            // visibility_graph::global_map def_obstacle_map;
 
             rclcpp::Client<Takeoff>::SharedPtr takeoff_all_client;
             rclcpp::Client<Land>::SharedPtr land_all_client;
@@ -387,11 +395,14 @@ namespace cs2
             void send_land_and_update(
                 std::map<std::string, agent_state>::iterator s,
                 std::map<std::string, agent_struct>::iterator c);
+
+            // observation components     
             
             // helper function
             int id_from_key(std::string key, int remove = 3);
 
             std::unique_ptr<PointCloud2> convert_cloud(
                 const std::vector<std::pair<float, const Eval_agent>>& obstacles);
+
     };
 }

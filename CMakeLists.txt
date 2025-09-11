@@ -86,17 +86,17 @@ ament_target_dependencies(${PROJECT_NAME}_node
   tf2_ros
 )
 
-# add mission node
-add_executable(mission_node src/mission_node.cpp src/common.cpp)
-add_dependencies(mission_node ${PROJECT_NAME})
+# # add mission node
+# add_executable(mission_node src/mission_node.cpp src/common.cpp)
+# add_dependencies(mission_node ${PROJECT_NAME})
 
-target_link_libraries(mission_node visibility_graph "${PROJECT_NAME}__rosidl_typesupport_cpp")
-ament_target_dependencies(mission_node
-  rclcpp
-  sensor_msgs
-  std_srvs
-  crazyflie_interfaces
-)
+# target_link_libraries(mission_node visibility_graph "${PROJECT_NAME}__rosidl_typesupport_cpp")
+# ament_target_dependencies(mission_node
+#   rclcpp
+#   sensor_msgs
+#   std_srvs
+#   crazyflie_interfaces
+# )
 
 # add visualization node
 add_executable(visualization_node 
@@ -116,7 +116,7 @@ ament_target_dependencies(visualization_node
 # Install C++ executables
 install(TARGETS
   ${PROJECT_NAME}_node
-  mission_node
+  #mission_node
   visualization_node
   DESTINATION lib/${PROJECT_NAME}
 )
@@ -130,7 +130,7 @@ install(DIRECTORY
 
 # Install python executables
 install(
-  PROGRAMS scripts/smaclike.py
+  PROGRAMS scripts/smaclike_aviary.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

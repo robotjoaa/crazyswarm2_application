@@ -456,7 +456,7 @@ void cs2::cs2_application::handler_timer_callback()
 
 std::unique_ptr<PointCloud2> cs2::cs2_application::convert_cloud(
     const std::vector<std::pair<float, const Eval_agent>>& obstacles)
-    {
+{
     auto cloud_msg = std::make_unique<sensor_msgs::msg::PointCloud2>();
     cloud_msg->header.frame_id = "/world";    
     cloud_msg->header.stamp = clock.now();
@@ -482,3 +482,70 @@ std::unique_ptr<PointCloud2> cs2::cs2_application::convert_cloud(
     }
     return cloud_msg;
 }   
+
+void cs2::cs2_application::create_vis_env(
+
+)
+{
+    //TODO : add all alive agents
+    //add all agents to orca_obstacle_map.obs
+    std::vector<visibility_graph::obstacle> new_obs_list = def_obstacle_list;
+
+    for (auto &[key, agent] : agents_states)
+    {
+        double eps = 0.0001;
+        std::vector<Eigen::Vector2d> vert_list = obstacle_list.front().v;
+
+
+
+        // connect the disjointed wall obstacle
+        for (size_t x = 1; x < obstacle_list.size(); x++)
+            {
+                bool found = false;
+                size_t yi, yj, xi, xj;
+                
+                // iterate through the vertices list (the accumulated list)
+                for (yi = 0; yi < vert_list.size(); yi++)
+                {
+                    yj = (yi + 1) % (vert_list.size());
+                    // iterate through the obstacle vertices
+                    for (xi = 0; xi < obstacle_list[x].v.size(); xi++)
+                    {
+                        xj = (xi + 1) % (obstacle_list[x].v.size());
+
+                        // std::cout << "yij(" << yi << " " << yj << ") " << 
+                        //     "xij(" << xi << " " << xj << ") " << 
+                        //     (obstacle_list[x].v[xi] - vert_list[yj]).norm() <<
+                        //     " " << (obstacle_list[x].v[xj] - vert_list[yi]).norm() << std::endl;
+                        if ((obstacle_list[x].v[xi] - vert_list[yj]).norm() < eps
+                            && (obstacle_list[x].v[xj] - vert_list[yi]).norm() < eps)
+                        {
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (found)
+                    {
+                        // after yi push in xj -> xi
+                        for (size_t zi = 0; zi < obstacle_list[x].v.size() - 2; zi++)
+                        {
+                            size_t v = (xj + zi + 1) % (obstacle_list[x].v.size());
+                            auto iter_position = vert_list.begin() + yi + zi + 1;
+                            vert_list.insert(iter_position, obstacle_list[x].v[v]);
+                        }
+                        break;
+                    }
+                }
+            }
+            visibility_graph::obstacle joint_obstacle;
+            joint_obstacle.v = vert_list;
+            joint_obstacle.h = std::make_pair(height_list[0], height_list[1]);
+            new_obs_list.emplace_back(joint_obstacle);
+    }
+    visibility_graph::global_map vis_map;
+    vis_map.obs = def_obstacle_list;
+    vis_map.inflation = protected_zone
+
+
+}

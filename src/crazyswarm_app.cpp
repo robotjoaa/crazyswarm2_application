@@ -270,10 +270,65 @@ void cs2::cs2_application::user_callback(
             RCLCPP_INFO(this->get_logger(), "%s", is_go_to ? 
                 "go_to_sent" : "land_sent");
     }
+    // handle attack
+    else if (strcmp(copy.cmd.c_str(), dict.attack.c_str()) == 0)
+    {
+        // check visibility on target position
+        // check uav_id length is 2 : src, target
+        // copy.uav_id.size() == 2
+        
+        // get position and distance
+        auto iterator = agents_comm.find(copy.uav_id[0]);
+        auto iterator_states = agents_states.find(copy.uav_id[0]);
+        if (iterator != agents_comm.end() && iterator_states != agents_states.end()){
+            iterator 
+        }
+        // check visibility on copy.goal and identify who's hit
+        // including other units 
+        
+        // only do visibility when obs are not empty
+        if (!orca_obstacle_map.obs.empty() && !copy.is_external)
+        {
+            orca_obstacle_map.start_end.first = 
+                iterator_states->second.transform.translation();
+            orca_obstacle_map.start_end.second = 
+                Eigen::Vector3d(copy.goal.x, copy.goal.y, copy.goal.z);
+            std::string frame = "nwu";
+            visibility_graph::visibility vg(orca_obstacle_map, frame, 1);
+        }
+
+        // modify mission_capable of that agent
+        agent_update_mutex.lock();
+        while (!iterator_states->second.target_queue.empty())
+            iterator_states->second.target_queue.pop();
+    
+            iterator_states->second.target_queue.push(
+                Eigen::Vector3d(copy.goal.x, copy.goal.y, copy.goal.z)
+            );
+
+            iterator_states->second.flight_state = MOVE;
+            iterator_states->second.completed = false;
+
+        //RCLCPP_INFO(this->get_logger(), "go_to sent for %s (%lfms)", 
+        //  iterator->first.c_str(), (clock.now() - start).seconds()*1000.0);
+
+        RCLCPP_INFO(this->get_logger(), "%s", "attack_sent");
+        agent_update_mutex.unlock();
+
+    }
     else
         RCLCPP_ERROR(this->get_logger(), "wrong command type, resend");
 
 }
+
+// // create environment to compute can_move 
+// void cs2::cs2_application::check_moves(VisiLibity::Environment env)
+// {   
+   
+
+//     // 
+// }
+
 
 void cs2::cs2_application::pose_callback(
     const PoseStamped::SharedPtr msg, 

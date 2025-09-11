@@ -128,6 +128,7 @@ namespace common
             const std::string hold = "hold";
             const std::string external = "external";
             const std::string go_to_velocity = "goto_velocity";
+            const std::string attack = "attack"; //smac
 
             const std::string concurrent = "conc";
             const std::string wait = "wait";

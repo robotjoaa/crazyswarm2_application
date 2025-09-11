@@ -1,5 +1,5 @@
 import numpy as np
-import pandas as pd
+#import pandas as pd
 from math import pi
 from smaclike.mamp.util import l3norm, l3normsq, takeSecond, sqr
 from smaclike.mamp.configs.config import DT
@@ -76,7 +76,7 @@ class Agent(object):
         self.max_run_dist = np.inf
         self.ANIMATION_COLUMNS = ['pos_x', 'pos_y', 'pos_z', 'alpha', 'beta', 'gamma', 'vel_x', 'vel_y', 'vel_z',
                                   'gol_x', 'gol_y', 'gol_z', 'radius']
-        self.history_info = pd.DataFrame(columns=self.ANIMATION_COLUMNS)
+        #self.history_info = pd.DataFrame(columns=self.ANIMATION_COLUMNS)
 
     def updateAgent(self, start_pos, goal_pos, vel, col) :
         #print("updateAgent: ",start_pos, goal_pos, vel)

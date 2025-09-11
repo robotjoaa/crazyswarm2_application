@@ -201,6 +201,8 @@ namespace RVO
 
       // smaclike
       bool is_visibleValid_;
+      // TODO : chekc agent alive for CA during landing 
+      bool is_alive_; 
       std::vector<std::pair<float, const Eval_agent>> visibleAllies_;
       std::vector<std::pair<float, const Eval_agent>> visibleEnemies_;
       std::vector<Plane> orcaPlanes_;

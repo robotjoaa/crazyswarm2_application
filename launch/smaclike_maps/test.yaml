@@ -1,0 +1,15 @@
+smaclike_map:
+    name: "test"
+    num_ally_units: 1
+    num_enemy_units: 1
+    groups: 
+      - init_pose: [0.0, 0.0, 1.5, 0]
+        base_point: [3.0, 3.0, 1.0]
+        faction: "ALLY"
+        unit: "DRONE"
+      - init_pose: [0.8, 1.38, 2, -2.09]
+        base_point: [-3.0, -3.0, 1.0]
+        faction: "ENEMY"
+        unit: "WEAK_DRONE"
+    attack_point: [0, 0, 2]
+    obstacle_preset: "empty"

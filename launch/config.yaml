@@ -20,7 +20,11 @@ queue_size: 20
 # add in the environment file name here
 # environment_file: ""
 # environment_file: "safmc.yaml"
-environment_file: "arena.yaml"
+environment_file: "empty.yaml"
+
+# smaclike map file 
+smaclike_map: "test.yaml"
+
 external_timeout: 4.0
 # 1 corrugated board: length(x) 1.22, width(y) 2.454, 
 # together (2 corrugated board + A3): length(x) 2.737, width(y) 2.454

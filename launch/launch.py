@@ -37,6 +37,15 @@ def generate_launch_description():
     with open(environment_yaml, 'r') as ymlfile:
         environment = yaml.safe_load(ymlfile)  
 
+    smaclike_name = config["smaclike_map"]
+
+    # load unit configuration
+    smaclike_yaml = os.path.join(
+        get_package_share_directory('crazyswarm_application'),
+        'launch',
+        'smaclike_maps',
+        smaclike_name)
+
     # get log path
     log = os.path.join(
         get_package_share_directory('crazyswarm_application'),
