@@ -80,6 +80,7 @@ namespace RVO
     Eigen::Vector3f velocity_;
     float radius_;
     AgentType type_; 
+    size_t id_;
   };
 
   /**
@@ -168,9 +169,9 @@ namespace RVO
       void updateVisibility(float rangeSq);
 
       // getter for neighbors
-      const std::vector<std::pair<float, const Eval_agent>>& getNeighbors(AgentType option = OBSTACLE);
+      const std::vector<std::pair<float, const Eval_agent>>& getNeighbors (AgentType option = OBSTACLE) const;
 
-      bool isneighborValid() {return is_visibleValid_;};
+      bool isneighborValid() const {return is_visibleValid_;};
 
       void updateState(Eigen::Vector3f pos, 
         Eigen::Vector3f vel, Eigen::Vector3f pref_vel);

@@ -407,7 +407,7 @@ namespace RVO
     //visibleEnemies_.clear(); 
   }
   
-  const std::vector<std::pair<float, const Eval_agent>>& Agent::getNeighbors(AgentType option){
+  const std::vector<std::pair<float, const Eval_agent>>& Agent::getNeighbors(AgentType option) const{
     switch(option){
       case ALLY : 
         return visibleAllies_;

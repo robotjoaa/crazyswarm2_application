@@ -25,6 +25,7 @@
 #include <ctime>
 
 #include <Eigen/Dense>
+#include <Eigen/Geometry>
 
 #include "std_srvs/srv/empty.hpp"
 
@@ -42,6 +43,9 @@
 
 #include "crazyswarm_application/msg/named_pose_array.hpp"
 #include "crazyswarm_application/msg/named_pose.hpp"
+
+#include "crazyswarm_application/msg/pre_observation.hpp"
+#include "crazyswarm_application/msg/neighbor.hpp"
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/twist.hpp"
@@ -76,6 +80,9 @@ using crazyflie_interfaces::msg::VelocityWorld;
 using crazyswarm_application::msg::UserCommand;
 using crazyswarm_application::msg::AgentsStateFeedback;
 using crazyswarm_application::msg::AgentState;
+using crazyswarm_application::msg::PreObservation;
+using crazyswarm_application::msg::Neighbor;
+
 
 using geometry_msgs::msg::PoseStamped;
 using geometry_msgs::msg::Point;
@@ -237,6 +244,8 @@ namespace cs2
                     tmp.cloud_publisher = 
                         this->create_publisher<PointCloud2>(name + "/obstacles", 25);
 
+                    tmp.move_publisher = 
+                        this->create_publisher<MarkerArray>(name + "/move", 7);
                     agents_comm.insert({name, tmp});
                 
                     Agent new_rvo2_agent = Agent(
@@ -397,12 +406,35 @@ namespace cs2
                 std::map<std::string, agent_struct>::iterator c);
 
             // observation components     
+            void convert_neighbors(
+                const Agent& agent, std::vector<Neighbor>& vis_ally, std::vector<Neighbor>& vis_enemy);
+
+            
+
+            void compute_can_move(std::string mykey, 
+                const agent_state& agent, 
+                std::vector<bool> &result);
+
+            size_t do_laser_action(
+                std::string mykey, const agent_state& agent, 
+                Eigen::Vector3d target_point
+            );
+
+            void get_line_polygon_intersection(
+                visibility_graph::global_map g_m, std::pair<Eigen::Vector3d, Eigen::Vector3d> s_e, 
+                std::vector<Eigen::Vector3d> &intersections);
+            
+            bool get_point_to_line_3d(
+                Eigen::Vector3d p, Eigen::Vector3d start, Eigen::Vector3d end,
+                double &distance);
             
             // helper function
             int id_from_key(std::string key, int remove = 3);
 
             std::unique_ptr<PointCloud2> convert_cloud(
                 const std::vector<std::pair<float, const Eval_agent>>& obstacles);
-
+            
+            std::unique_ptr<MarkerArray> convert_move(
+                Eigen::Vector3d trans, const std::vector<bool>& can_move);
     };
 }

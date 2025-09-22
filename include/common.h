@@ -35,6 +35,8 @@
 
 // visualize obstacle
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include "visualization_msgs/msg/marker_array.hpp"
+#include "visualization_msgs/msg/marker.hpp"
 
 #include "crazyflie_interfaces/srv/land.hpp"
 #include "crazyflie_interfaces/srv/go_to.hpp"
@@ -59,6 +61,8 @@ using crazyflie_interfaces::msg::FullState;
 
 using geometry_msgs::msg::Twist;
 using sensor_msgs::msg::PointCloud2;
+using visualization_msgs::msg::MarkerArray;
+using visualization_msgs::msg::Marker;
 
 namespace common
 {
@@ -74,6 +78,8 @@ namespace common
         rclcpp::Publisher<Hover>::SharedPtr hover_world_publisher;
         //neighbor publisher
         rclcpp::Publisher<PointCloud2>::SharedPtr cloud_publisher;
+        //move publisher
+        rclcpp::Publisher<MarkerArray>::SharedPtr move_publisher;
     };
 
     struct agent_state

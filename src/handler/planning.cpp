@@ -41,6 +41,7 @@ void cs2::cs2_application::conduct_planning(
             node->radius_ = (float)protected_zone;
             bool faction = (id_from_key(key) <= this->n_agents);
             node->type_ = (my_faction != faction) ? ENEMY : ALLY;
+            node->id_ = id_from_key(key);
             int v = kd_insert3(
                 kd_tree, node->position_.x(), 
                 node->position_.y(), node->position_.z(),
@@ -54,7 +55,7 @@ void cs2::cs2_application::conduct_planning(
             state.transform.translation().z(),
             communication_radius);
 
-        float communication_radius_float = (float)communication_radius;
+        float communication_radius_sq_float = (float)(communication_radius * communication_radius);
 
         // clear agent neighbour before adding in new neighbours and obstacles
         it->second.clearAgentNeighbor();
@@ -64,7 +65,7 @@ void cs2::cs2_application::conduct_planning(
             double pos[3];
             Eval_agent *agent = (Eval_agent*)kd_res_item(neighbours, pos);
             
-            it->second.insertAgentNeighbor(*agent, communication_radius_float);
+            it->second.insertAgentNeighbor(*agent, communication_radius_sq_float);
             // store range query result so that we dont need to query again for rewire;
             kd_res_next(neighbours); // go to next in kd tree range query result
         }
@@ -76,7 +77,7 @@ void cs2::cs2_application::conduct_planning(
     // find the obstacles that lie on the plane first
     if (!orca_obstacle_map.obs.empty())
     {
-        float communication_radius_float = (float)communication_radius;
+        float communication_radius_sq_float = (float)(communication_radius * communication_radius);
         visibility_graph::global_map copy = orca_obstacle_map;
         copy.start_end.first = state.transform.translation();
         copy.t = visibility_graph::get_affine_transform(
@@ -89,6 +90,11 @@ void cs2::cs2_application::conduct_planning(
             copy, Eigen::Vector3d(0.0, 0.0, 1.0), 
             rot_polygons, debug_point_vertices, true);
         
+        // TODO: check other directions also 
+        // visibility_graph::get_polygons_on_plane(
+        //     copy, Eigen::Vector3d(0.0, 0.0, 1.0), 
+        //     rot_polygons, debug_point_vertices, true);
+
         // threshold is communication_radius
         for (auto &poly : rot_polygons)
         {
@@ -123,7 +129,8 @@ void cs2::cs2_application::conduct_planning(
                             static_point.velocity_ = Eigen::Vector3f::Zero();
                             static_point.radius_ = (float)protected_zone/3;
                             static_point.type_ = OBSTACLE; // static obstacle
-                            it->second.insertAgentNeighbor(static_point, communication_radius_float);
+                            static_point.id_ = 0;
+                            it->second.insertAgentNeighbor(static_point, communication_radius_sq_float);
                         }
                         // std::cout << mykey << " obstacle_static " << static_point.position_.transpose() << std::endl;
                     }
@@ -378,9 +385,12 @@ void cs2::cs2_application::handler_timer_callback()
                     
                     //publish neighbor
                     auto rvo_it = rvo_agents.find(key);
-                    auto cloud_msg = convert_cloud(rvo_it->second.getNeighbors());
-                    it->second.cloud_publisher->publish(std::move(cloud_msg));
-                    //RCLCPP_INFO(this->get_logger(), "MOVE VELOCITY published");
+                    float communication_radius_sq_float = (float)(communication_radius * communication_radius);
+                    // only updated visibility is valid to make observation
+                    rvo_it->second.updateVisibility(communication_radius_sq_float);
+                    // auto cloud_msg = convert_cloud(rvo_it->second.getNeighbors());
+                    // it->second.cloud_publisher->publish(std::move(cloud_msg));
+                    // RCLCPP_INFO(this->get_logger(), "MOVE VELOCITY published");
                 }
                 break;
             }
@@ -442,7 +452,33 @@ void cs2::cs2_application::handler_timer_callback()
         agentstate.completed = agent.completed;
         agentstate.mission_capable = agent.mission_capable;
 
-        agents_feedback.agents.push_back(agentstate);
+        // make preObservation
+        PreObservation preobs;
+        preobs.agent = agentstate;
+
+        if(agent.mission_capable){
+            std::vector<bool> can_move;
+            compute_can_move(key, agent, can_move);
+            preobs.can_move = can_move;
+            
+            auto it_comm = agents_comm.find(key);
+            if (it_comm != agents_comm.end()){
+                auto move_marker = convert_move(agent.transform.translation(), can_move);
+                it_comm->second.move_publisher->publish(std::move(move_marker));
+            }
+
+            auto rvo_it = rvo_agents.find(key);
+            std::vector<Neighbor> vis_ally;
+            std::vector<Neighbor> vis_enemy; 
+            convert_neighbors(rvo_it->second, vis_ally, vis_enemy); 
+            preobs.visible_ally = vis_ally;
+            preobs.visible_enemy = vis_enemy;
+        }else{
+            preobs.can_move = std::vector<bool>({false, false, false, false, false, false});
+            preobs.visible_ally = std::vector<Neighbor>();
+            preobs.visible_enemy = std::vector<Neighbor>();
+        }
+        agents_feedback.pre_obs.push_back(preobs);
         target_array.markers.push_back(target);
     }
 
@@ -483,69 +519,341 @@ std::unique_ptr<PointCloud2> cs2::cs2_application::convert_cloud(
     return cloud_msg;
 }   
 
-void cs2::cs2_application::create_vis_env(
+std::unique_ptr<MarkerArray> cs2::cs2_application::convert_move(
+    Eigen::Vector3d trans, const std::vector<bool>& can_move)
+{
+    auto marker_array = std::make_unique<visualization_msgs::msg::MarkerArray>();
 
+    for (int i = 0; i < can_move.size(); i++){
+        visualization_msgs::msg::Marker move_msg;
+        move_msg.header.frame_id = "/world";
+        move_msg.header.stamp = clock.now();
+        move_msg.type = visualization_msgs::msg::Marker::ARROW;
+        move_msg.action = visualization_msgs::msg::Marker::ADD;
+        move_msg.id = i;
+
+        Eigen::Vector3d dpos;
+        switch(i) {
+            case 0:
+                dpos = Eigen::Vector3d(0, 1, 0);
+                break;
+            case 1:
+                dpos = Eigen::Vector3d(0, -1, 0);
+                break;
+            case 2:
+                dpos = Eigen::Vector3d(1, 0, 0);
+                break;
+            case 3:
+                dpos = Eigen::Vector3d(-1, 0, 0);
+                break;
+            case 4:
+                dpos = Eigen::Vector3d(0, 0, 1);
+                break;
+            case 5:
+                dpos = Eigen::Vector3d(0, 0, -1);
+                break;
+        }
+        dpos *= 0.5*0.55;
+        geometry_msgs::msg::Point p_start, p_end;
+        p_start.x = trans.x();
+        p_start.y = trans.y();
+        p_start.z = trans.z();
+        p_end.x = trans.x() + dpos.x();
+        p_end.y = trans.y() + dpos.y();
+        p_end.z = trans.z() + dpos.z();
+
+        move_msg.points.push_back(p_start);
+        move_msg.points.push_back(p_end);
+
+        move_msg.color.a = 1.0;
+        if (can_move[i]){
+            move_msg.color.r = 0.0;
+            move_msg.color.g = 0.0;
+            move_msg.color.b = 1.0;
+        }
+        else{
+            move_msg.color.r = 1.0;
+            move_msg.color.g = 0.0;
+            move_msg.color.b = 0.0;
+        }
+
+        marker_array->markers.push_back(move_msg);
+    }
+
+    return marker_array;
+}   
+
+
+void cs2::cs2_application::convert_neighbors(
+    const Agent& agent, 
+    std::vector<Neighbor>& vis_ally, 
+    std::vector<Neighbor>& vis_enemy
 )
 {
-    //TODO : add all alive agents
-    //add all agents to orca_obstacle_map.obs
-    std::vector<visibility_graph::obstacle> new_obs_list = def_obstacle_list;
+    if (!agent.isneighborValid())
+        return;
 
-    for (auto &[key, agent] : agents_states)
-    {
-        double eps = 0.0001;
-        std::vector<Eigen::Vector2d> vert_list = obstacle_list.front().v;
+    for (const auto ally : agent.getNeighbors(ALLY)){
+        if(ally.second.type_ == ALLY){
+            Neighbor tmp_msg;
+            tmp_msg.id = ally.second.id_;
+            
+            geometry_msgs::msg::Point pos;
+            pos.x = ally.second.position_[0];
+            pos.y = ally.second.position_[1];
+            pos.z = ally.second.position_[2];
+            tmp_msg.position = pos;
+            
+            geometry_msgs::msg::Point vel;
+            vel.x = ally.second.velocity_[0];
+            vel.y = ally.second.velocity_[1];
+            vel.z = ally.second.velocity_[2];
+            tmp_msg.velocity = vel;
 
-
-
-        // connect the disjointed wall obstacle
-        for (size_t x = 1; x < obstacle_list.size(); x++)
-            {
-                bool found = false;
-                size_t yi, yj, xi, xj;
-                
-                // iterate through the vertices list (the accumulated list)
-                for (yi = 0; yi < vert_list.size(); yi++)
-                {
-                    yj = (yi + 1) % (vert_list.size());
-                    // iterate through the obstacle vertices
-                    for (xi = 0; xi < obstacle_list[x].v.size(); xi++)
-                    {
-                        xj = (xi + 1) % (obstacle_list[x].v.size());
-
-                        // std::cout << "yij(" << yi << " " << yj << ") " << 
-                        //     "xij(" << xi << " " << xj << ") " << 
-                        //     (obstacle_list[x].v[xi] - vert_list[yj]).norm() <<
-                        //     " " << (obstacle_list[x].v[xj] - vert_list[yi]).norm() << std::endl;
-                        if ((obstacle_list[x].v[xi] - vert_list[yj]).norm() < eps
-                            && (obstacle_list[x].v[xj] - vert_list[yi]).norm() < eps)
-                        {
-                            found = true;
-                            break;
-                        }
-                    }
-
-                    if (found)
-                    {
-                        // after yi push in xj -> xi
-                        for (size_t zi = 0; zi < obstacle_list[x].v.size() - 2; zi++)
-                        {
-                            size_t v = (xj + zi + 1) % (obstacle_list[x].v.size());
-                            auto iter_position = vert_list.begin() + yi + zi + 1;
-                            vert_list.insert(iter_position, obstacle_list[x].v[v]);
-                        }
-                        break;
-                    }
-                }
-            }
-            visibility_graph::obstacle joint_obstacle;
-            joint_obstacle.v = vert_list;
-            joint_obstacle.h = std::make_pair(height_list[0], height_list[1]);
-            new_obs_list.emplace_back(joint_obstacle);
+            tmp_msg.radius = ally.second.radius_;
+            tmp_msg.distance = ally.first;
+            vis_ally.push_back(tmp_msg);
+        }
+        else{
+            RCLCPP_INFO(this->get_logger(),"convert_neighbors: this should not happen");
+        }
     }
-    visibility_graph::global_map vis_map;
-    vis_map.obs = def_obstacle_list;
-    vis_map.inflation = protected_zone
+    for (const auto enemy : agent.getNeighbors(ENEMY)){
+        if(enemy.second.type_ == ENEMY){
+            Neighbor tmp_msg;
+            tmp_msg.id = enemy.second.id_;
+            
+            geometry_msgs::msg::Point pos;
+            pos.x = enemy.second.position_[0];
+            pos.y = enemy.second.position_[1];
+            pos.z = enemy.second.position_[2];
+            tmp_msg.position = pos;
+            
+            geometry_msgs::msg::Point vel;
+            vel.x = enemy.second.velocity_[0];
+            vel.y = enemy.second.velocity_[1];
+            vel.z = enemy.second.velocity_[2];
+            tmp_msg.velocity = vel;
 
+            tmp_msg.radius = enemy.second.radius_;
+            tmp_msg.distance = enemy.first;
+            vis_ally.push_back(tmp_msg);
+        }
+        else{
+            RCLCPP_INFO(this->get_logger(),"convert_neighbors: this should not happen");
+        }
+    }
+}   
 
+void cs2::cs2_application::compute_can_move(
+    std::string mykey, 
+    const agent_state& agent, 
+    std::vector<bool> &result
+)
+{
+    Eigen::Vector3d trans = agent.transform.translation();
+    Eigen::Vector3d rpy = euler_rpy(agent.transform.linear()); //radian
+    float yaw = rpy.z();
+    float check_value = 0.5 * 0.55; //TODO: get pref_speed through parameter
+
+    std::vector<Eigen::Vector3d> intersections;
+
+    for(int i = 0; i<6; i++){
+        Eigen::Vector3d dpos;
+        switch(i) { 
+            case 0: 
+                dpos = Eigen::Vector3d(0, 1, 0);
+                break;
+            case 1:
+                dpos = Eigen::Vector3d(0, -1, 0);
+                break;
+            case 2:
+                dpos = Eigen::Vector3d(1, 0, 0);
+                break;
+            case 3:
+                dpos = Eigen::Vector3d(-1, 0, 0);
+                break;
+            case 4:
+                dpos = Eigen::Vector3d(0, 0, 1);
+                break;
+            case 5:
+                dpos = Eigen::Vector3d(0, 0, -1);
+                break;
+        }
+        // move position w.r.t. current yaw 
+        Eigen::Vector3d dir = Eigen::Vector3d(
+            dpos.x()*std::cos(yaw) - dpos.y()*std::sin(yaw),
+            dpos.x()*std::sin(yaw) + dpos.y()*std::sin(yaw),
+            dpos.z()
+        );
+        std::pair<Eigen::Vector3d, Eigen::Vector3d> s_e;
+        s_e.first = trans;
+        s_e.second = trans + dir * check_value;
+        
+        visibility_graph::global_map copy = orca_obstacle_map;
+        get_line_polygon_intersection(copy, s_e, intersections);
+        std::vector<std::pair<std::string, float>> distance_list;
+       
+        if (!intersections.empty()){
+            result.push_back(false); //can't move 
+        }
+        else{ 
+            // find unit closest to the moving line
+            for (auto &[key, other_agent] : agents_states){
+                if (strcmp(mykey.c_str(), key.c_str()) == 0)
+                    continue;
+                if (!other_agent.mission_capable) // do not consider dead agent
+                    continue;
+            
+                Eigen::Vector3d other_trans = other_agent.transform.translation();
+                std::pair<std::string, float> tmp_pair;
+                tmp_pair.first = key; 
+                double dist_to_line; 
+                if (!get_point_to_line_3d(other_trans, s_e.first, s_e.second, dist_to_line))
+                    continue;
+                tmp_pair.second = dist_to_line;
+                distance_list.push_back(tmp_pair);
+            }
+            auto it = std::min_element(
+                distance_list.begin(),
+                distance_list.end(),
+                [](const auto& lhs, const auto& rhs) {
+                    return lhs.second < rhs.second;
+                }
+            );
+            
+            // if closest unit is closer than radius, can't move 
+            if (it != distance_list.end()){
+                // auto rvo_current = rvo_agents.find(mykey);
+                // auto rvo_other = rvo_agents.find(it->first);
+                // TODO: Add public getter for radius or make it accessible
+                double combined_r = 0.275 + 0.275; // Default radius (protected zone)
+                if (it->second < combined_r)
+                    result.push_back(false);
+            }
+            result.push_back(true);
+        }
+    }
+}
+
+size_t cs2::cs2_application::do_laser_action(
+    std::string mykey, const agent_state& agent,
+    Eigen::Vector3d target_point
+){
+    Eigen::Vector3d trans = agent.transform.translation();
+    std::pair<Eigen::Vector3d, Eigen::Vector3d> s_e;
+    s_e.first = trans;
+    s_e.second = target_point;
+
+    visibility_graph::global_map copy = orca_obstacle_map;
+    std::vector<Eigen::Vector3d> intersections;
+    get_line_polygon_intersection(copy, s_e, intersections);
+
+    // find unit that is closer than the obstacle 
+
+    double closest_obs_distance = communication_radius; 
+    size_t result = 0;
+    if (!intersections.empty()){
+        for(auto &p : intersections){
+            double tmp_dist = (p - trans).norm(); 
+            if (tmp_dist < closest_obs_distance)
+                closest_obs_distance = tmp_dist;
+        }
+    }
+    // for visible ally and visible enemy, insert if it is closer than closest_obs_distance
+    std::vector<std::pair<float, RVO::Eval_agent>> sorted_neighbor;
+    auto rvo_current = rvo_agents.find(mykey);
+    auto vis_ally = rvo_current->second.getNeighbors(ALLY);
+    auto vis_enemy = rvo_current->second.getNeighbors(ENEMY);
+
+    // if there exists neighbor
+    if (!vis_ally.empty() || !vis_enemy.empty()){
+        for (const auto& item : vis_ally) {
+            if (item.first < closest_obs_distance) {
+                sorted_neighbor.push_back(std::make_pair(item.first, item.second));
+            }
+        }
+
+        for (const auto& item : vis_enemy) {
+            if (item.first < closest_obs_distance) {
+                sorted_neighbor.push_back(std::make_pair(item.first, item.second));
+            }
+        }
+
+        std::sort(sorted_neighbor.begin(), sorted_neighbor.end(),
+            [](const auto& lhs, const auto& rhs) {
+                return lhs.first < rhs.first; // Sort by distance
+            });
+
+        // and close enough (hit radius) to the line segment
+        for (auto &[dist, eval_agent]: sorted_neighbor){
+            Eigen::Vector3d other_trans = eval_agent.position_.cast<double>();
+            double dist_to_line; 
+            if (!get_point_to_line_3d(other_trans, s_e.first, s_e.second, dist_to_line))
+                continue;
+            if (dist_to_line < 0.06){ // refer to URDF collision radius
+                // TODO : provide hit radius as parameter
+                result = eval_agent.id_;
+                break;
+            }
+        }
+    }
+    return result;
+}
+
+void cs2::cs2_application::get_line_polygon_intersection(
+    visibility_graph::global_map g_m, std::pair<Eigen::Vector3d, Eigen::Vector3d> s_e, std::vector<Eigen::Vector3d>& intersections
+)
+{   
+    for (visibility_graph::obstacle &obs : g_m.obs){
+        // for each obs as a polygon, get_line_plane_intersection
+        int obs_vert_size = obs.v.size();
+        // doesn't matter if it's concave obstacle 
+
+        // bottom 
+        Eigen::Vector3d tmp_pop = Eigen::Vector3d(obs.c[0], obs.c[1], obs.h.first);
+        Eigen::Vector3d tmp_n = Eigen::Vector3d(0,0,-1);
+        Eigen::Vector3d result; 
+        if(visibility_graph::get_line_plane_intersection(s_e, tmp_n, tmp_pop, result)){
+            intersections.push_back(result);
+        }
+        // top
+        tmp_pop = Eigen::Vector3d(obs.c[0], obs.c[1], obs.h.second);
+        tmp_n = Eigen::Vector3d(0,0,1);
+        if(visibility_graph::get_line_plane_intersection(s_e, tmp_n, tmp_pop, result)){
+            intersections.push_back(result);
+        }
+        
+        // base vertices
+        for (int i = 0; i < obs_vert_size; i++){
+            i = i % obs_vert_size;
+            Eigen::Vector3d tmp_pop = Eigen::Vector3d(obs.v[i].x(), obs.v[i].y(), obs.h.first);
+            Eigen::Vector3d tmp_n = Eigen::Vector3d(obs.v[i+1].y() - obs.v[i].y(), - obs.v[i+1].x() + obs.v[i].x(), 0);
+            Eigen::Vector3d result; 
+            if(visibility_graph::get_line_plane_intersection(s_e, tmp_n, tmp_pop, result)){
+                intersections.push_back(result);
+            }
+        }
+    }
+}
+
+bool cs2::cs2_application::get_point_to_line_3d(
+        Eigen::Vector3d p, Eigen::Vector3d start, Eigen::Vector3d end,
+        double &distance){
+    Eigen::Vector3d tmp1 = p - start; 
+    Eigen::Vector3d tmp2 = end - start; 
+    Eigen::Vector3d cross = tmp1.cross(tmp2);
+    double epsilon = 0.0001;
+    
+    double t = tmp1.dot(tmp2) / tmp2.dot(tmp2);
+    if (t < 0.0 || t > 1.0)
+        return false;
+    Eigen::Vector3d proj = start + t * tmp2; 
+
+    if(tmp2.norm() < epsilon) 
+        return false;
+    else {
+        distance = (p - proj).norm();
+    }
+    return true;
 }

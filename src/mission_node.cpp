@@ -243,8 +243,9 @@ class mission_handler : public rclcpp::Node
 
             AgentsStateFeedback copy = *msg;
             // copy agent messages into local states
-            for (auto &agent : copy.agents)
+            for (auto &obs : copy.pre_obs)
             {
+                auto agent = obs.agent;
                 // check agents_description queue
                 std::map<std::string, agent_state>::iterator it = 
                     agents_description.find(agent.id);

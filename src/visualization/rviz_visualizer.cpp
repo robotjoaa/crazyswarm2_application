@@ -121,8 +121,9 @@ class RvizVisualizer : public rclcpp::Node
             std::map<int, agent_state> agents_map;
 
             // copy agent messages into local states
-            for (auto &agent : copy.agents)
+            for (auto &obs : copy.pre_obs)
             {
+                auto &agent = obs.agent;
                 std::string str_copy = agent.id;
                 // Remove cf_ from cf_XX
                 str_copy.erase(0,3);

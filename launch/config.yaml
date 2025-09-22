@@ -20,7 +20,8 @@ queue_size: 20
 # add in the environment file name here
 # environment_file: ""
 # environment_file: "safmc.yaml"
-environment_file: "empty.yaml"
+environment_file: "arena.yaml"
+# environment_file: "empty.yaml"
 
 # smaclike map file 
 smaclike_map: "test.yaml"
