@@ -88,3 +88,79 @@ RUN sudo apt-get update && sudo apt-get install -y --no-install-recommends \
 RUN echo "set bell-style none" >> ~/.inputrc
 RUN echo "export PATH=$HOME/.local/bin:$PATH" >> ~/.bashrc
 RUN sudo rm /etc/apt/apt.conf.d/docker-clean
+
+# install Claude Code dependencies
+RUN sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+        curl \
+        wget \
+        ca-certificates \
+        gnupg2 \
+        software-properties-common \
+        && \
+    sudo apt-get clean && \
+    sudo rm -rf /var/lib/apt/lists/*
+
+# Create startup script to install Claude Code at runtime
+RUN mkdir -p /home/user/scripts && \
+    cat > /home/user/scripts/install-claude.sh << 'EOF'
+#!/bin/bash
+if ! command -v claude-code &> /dev/null; then
+    echo "Installing Claude Code..."
+    # Try official installation method
+    curl -fsSL https://claude.ai/install.sh | bash
+
+    # If that fails, try alternative method
+    if ! command -v claude-code &> /dev/null; then
+        echo "Trying alternative installation..."
+        cd /tmp
+        wget https://github.com/anthropics/claude-code/releases/latest/download/claude-code-linux-x64.tar.gz 2>/dev/null || \
+        wget https://releases.claude.ai/claude-code/claude-code_latest_amd64.deb 2>/dev/null
+
+        if [ -f "claude-code-linux-x64.tar.gz" ]; then
+            tar -xzf claude-code-linux-x64.tar.gz
+            sudo mv claude-code /usr/local/bin/
+            sudo chmod +x /usr/local/bin/claude-code
+        elif [ -f "claude-code_latest_amd64.deb" ]; then
+            sudo dpkg -i claude-code_latest_amd64.deb || sudo apt-get install -f -y
+        fi
+
+        rm -rf /tmp/claude-code* 2>/dev/null
+    fi
+
+    # Add to PATH if not already there
+    if ! grep -q "claude-code" ~/.bashrc; then
+        echo 'export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"' >> ~/.bashrc
+        echo 'alias claude="claude-code"' >> ~/.bashrc
+    fi
+
+    echo "Claude Code installation completed!"
+else
+    echo "Claude Code is already installed!"
+fi
+EOF
+
+# Make the script executable
+RUN chmod +x /home/user/scripts/install-claude.sh
+
+# Create desktop shortcut that runs the installer first
+RUN mkdir -p ~/Desktop && \
+    cat > ~/Desktop/claude-code.desktop << 'EOF'
+[Desktop Entry]
+Name=Claude Code
+Comment=AI-powered code assistant
+Exec=bash -c '/home/user/scripts/install-claude.sh && gnome-terminal -- claude-code'
+Icon=utilities-terminal
+Terminal=false
+Type=Application
+Categories=Development;IDE;
+StartupNotify=true
+EOF
+
+RUN chmod +x ~/Desktop/claude-code.desktop
+
+# Also create a menu entry
+RUN mkdir -p ~/.local/share/applications && \
+    cp ~/Desktop/claude-code.desktop ~/.local/share/applications/
+
+# Add installation script to bashrc so it runs automatically
+RUN echo '/home/user/scripts/install-claude.sh' >> ~/.bashrc
