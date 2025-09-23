@@ -56,7 +56,7 @@ def generate_launch_description():
             namespace='',
             executable='rviz2',
             name='rviz2',
-            arguments=['-d' + os.path.join(get_package_share_directory('crazyswarm_application'), 'launch', 'config.rviz')],
+            arguments=['-d' + os.path.join(get_package_share_directory('crazyswarm_application'), 'launch', 'config_debug.rviz')],
             parameters=[{
                 "use_sim_time": True,
             }]

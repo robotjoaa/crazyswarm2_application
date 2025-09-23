@@ -181,9 +181,9 @@ void cs2::cs2_application::handler_timer_callback()
                 Eigen::Vector3d trans = agent.transform.translation();
                 double pose_difference = 
                     (agent.previous_target - trans).norm();
-                RCLCPP_INFO(this->get_logger(), "%s pose diff : %.3lf, prev_target : (%.3lf %.3lf %.3lf), agent : (%.3lf %.3lf %.3lf)", 
-                    key.c_str(), pose_difference, agent.previous_target.x(), agent.previous_target.y(), agent.previous_target.z(), \
-                    trans.x(), trans.y(), trans.z());
+                // RCLCPP_INFO(this->get_logger(), "%s pose diff : %.3lf, prev_target : (%.3lf %.3lf %.3lf), agent : (%.3lf %.3lf %.3lf)", 
+                //     key.c_str(), pose_difference, agent.previous_target.x(), agent.previous_target.y(), agent.previous_target.z(), \
+                //     trans.x(), trans.y(), trans.z());
                 Eigen::Vector3d vel_target;
                 if (pose_difference < max_velocity)
                     vel_target = 
@@ -191,26 +191,26 @@ void cs2::cs2_application::handler_timer_callback()
                 else
                     vel_target = 
                         (agent.previous_target - agent.transform.translation()).normalized() * max_velocity;
-                RCLCPP_INFO(this->get_logger(), "%s hover before : %.3lf %.3lf %.3lf", 
-                    key.c_str(), vel_target.x(), vel_target.y(), vel_target.z());
-                // conduct_planning(vel_target, key, agent);
+                // RCLCPP_INFO(this->get_logger(), "%s hover before : %.3lf %.3lf %.3lf", 
+                //     key.c_str(), vel_target.x(), vel_target.y(), vel_target.z());
+                conduct_planning(vel_target, key, agent);
                 // RCLCPP_INFO(this->get_logger(), "%s hover after : %.3lf %.3lf %.3lf",
                 //     key.c_str(), vel_target.x(), vel_target.y(), vel_target.z());
-                // VelocityWorld vel_msg;
-                // vel_msg.header.stamp = clock.now();
-                // vel_msg.vel.x = vel_target.x();
-                // vel_msg.vel.y = vel_target.y();
-                // vel_msg.vel.z = vel_target.z();
-                // // vel_msg.height = agent.previous_target.z();
-                // // vel_msg.yaw = agent.previous_yaw * rad_to_deg;
-                // vel_msg.yaw_rate = 0.0;
+                VelocityWorld vel_msg;
+                vel_msg.header.stamp = clock.now();
+                vel_msg.vel.x = vel_target.x();
+                vel_msg.vel.y = vel_target.y();
+                vel_msg.vel.z = vel_target.z();
+                // vel_msg.height = agent.previous_target.z();
+                // vel_msg.yaw = agent.previous_yaw * rad_to_deg;
+                vel_msg.yaw_rate = 0.0;
 
-                Hover hover_msg;
-                hover_msg.header.stamp = clock.now();
-                hover_msg.vx = 0;
-                hover_msg.vy = 0;
-                hover_msg.yaw_rate = 0;
-                hover_msg.z_distance = trans.z();
+                // Hover hover_msg;
+                // hover_msg.header.stamp = clock.now();
+                // hover_msg.vx = 0;
+                // hover_msg.vy = 0;
+                // hover_msg.yaw_rate = 0;
+                // hover_msg.z_distance = trans.z();
                 // hover_msg.z_distance = 1.0;
 
 
@@ -226,8 +226,8 @@ void cs2::cs2_application::handler_timer_callback()
 
                 auto it = agents_comm.find(key);
                 if (it != agents_comm.end()){
-                    //it->second.vel_world_publisher->publish(vel_msg);
-                    it->second.hover_world_publisher->publish(hover_msg);
+                    it->second.vel_world_publisher->publish(vel_msg);
+                    //it->second.hover_world_publisher->publish(hover_msg);
                 // agent.completed = false;
                 }
                 break;
@@ -458,13 +458,18 @@ void cs2::cs2_application::handler_timer_callback()
 
         if(agent.mission_capable){
             std::vector<bool> can_move;
-            compute_can_move(key, agent, can_move);
+            std::vector<Eigen::Vector3d> intersections;
+            compute_can_move(key, agent, can_move, intersections);
+
             preobs.can_move = can_move;
-            
+            //RCLCPP_INFO(this->get_logger(), "%s can move size : %ld", key.c_str(), can_move.size());
             auto it_comm = agents_comm.find(key);
             if (it_comm != agents_comm.end()){
-                auto move_marker = convert_move(agent.transform.translation(), can_move);
+                auto move_marker = convert_move(key, agent, can_move);
                 it_comm->second.move_publisher->publish(std::move(move_marker));
+
+                auto point_msg = convert_points(intersections);
+                it_comm->second.cloud_publisher->publish(std::move(point_msg));
             }
 
             auto rvo_it = rvo_agents.find(key);
@@ -519,17 +524,54 @@ std::unique_ptr<PointCloud2> cs2::cs2_application::convert_cloud(
     return cloud_msg;
 }   
 
+std::unique_ptr<PointCloud2> cs2::cs2_application::convert_points(
+    const std::vector<Eigen::Vector3d>& points)
+{
+    auto cloud_msg = std::make_unique<sensor_msgs::msg::PointCloud2>();
+    cloud_msg->header.frame_id = "/world";    
+    cloud_msg->header.stamp = clock.now();
+    cloud_msg->height = 1;
+    cloud_msg->width = points.size();
+    cloud_msg->is_dense = false;
+
+    // Define fields x,y,z
+    sensor_msgs::PointCloud2Modifier modifier(*cloud_msg);
+    modifier.setPointCloud2FieldsByString(1, "xyz");
+    modifier.resize(points.size());
+
+    // Fill in data
+    sensor_msgs::PointCloud2Iterator<float> iter_x(*cloud_msg, "x");
+    sensor_msgs::PointCloud2Iterator<float> iter_y(*cloud_msg, "y");
+    sensor_msgs::PointCloud2Iterator<float> iter_z(*cloud_msg, "z");
+
+    for (const auto& p : points) {
+        *iter_x = p.x();
+        *iter_y = p.y();
+        *iter_z = p.z();
+        ++iter_x; ++iter_y; ++iter_z;
+    }
+    return cloud_msg;
+}   
+
+
 std::unique_ptr<MarkerArray> cs2::cs2_application::convert_move(
-    Eigen::Vector3d trans, const std::vector<bool>& can_move)
+    std::string mykey, const agent_state& agent, const std::vector<bool>& can_move)
 {
     auto marker_array = std::make_unique<visualization_msgs::msg::MarkerArray>();
-
+    
+    Eigen::Vector3d trans = agent.transform.translation();
+    Eigen::Vector3d rpy = euler_rpy(agent.transform.linear());
+    float yaw = rpy.z();
     for (int i = 0; i < can_move.size(); i++){
         visualization_msgs::msg::Marker move_msg;
         move_msg.header.frame_id = "/world";
         move_msg.header.stamp = clock.now();
         move_msg.type = visualization_msgs::msg::Marker::ARROW;
         move_msg.action = visualization_msgs::msg::Marker::ADD;
+        move_msg.scale.x = 0.05;
+        move_msg.scale.y = 0.05;
+        move_msg.scale.z = 0.05;
+        move_msg.ns = mykey;
         move_msg.id = i;
 
         Eigen::Vector3d dpos;
@@ -553,14 +595,21 @@ std::unique_ptr<MarkerArray> cs2::cs2_application::convert_move(
                 dpos = Eigen::Vector3d(0, 0, -1);
                 break;
         }
-        dpos *= 0.5*0.55;
+
+        Eigen::Vector3d dir = Eigen::Vector3d(
+            dpos.x()*std::cos(yaw) - dpos.y()*std::sin(yaw),
+            dpos.x()*std::sin(yaw) + dpos.y()*std::cos(yaw),
+            dpos.z()
+        );
+
+        dir *= 0.5*0.55;
         geometry_msgs::msg::Point p_start, p_end;
         p_start.x = trans.x();
         p_start.y = trans.y();
         p_start.z = trans.z();
-        p_end.x = trans.x() + dpos.x();
-        p_end.y = trans.y() + dpos.y();
-        p_end.z = trans.z() + dpos.z();
+        p_end.x = trans.x() + dir.x(); 
+        p_end.y = trans.y() + dir.y();
+        p_end.z = trans.z() + dir.z();
 
         move_msg.points.push_back(p_start);
         move_msg.points.push_back(p_end);
@@ -570,6 +619,15 @@ std::unique_ptr<MarkerArray> cs2::cs2_application::convert_move(
             move_msg.color.r = 0.0;
             move_msg.color.g = 0.0;
             move_msg.color.b = 1.0;
+            // if (i % 2 == 0){
+            //     move_msg.color.g = 0.0;
+            //     move_msg.color.b = 1.0 - 0.16*i;
+            // }
+            // else{
+            //     move_msg.color.g = 1.0 - 0.16*i;
+            //     move_msg.color.b = 0.0;
+            // }
+            
         }
         else{
             move_msg.color.r = 1.0;
@@ -648,7 +706,8 @@ void cs2::cs2_application::convert_neighbors(
 void cs2::cs2_application::compute_can_move(
     std::string mykey, 
     const agent_state& agent, 
-    std::vector<bool> &result
+    std::vector<bool> &result,
+    std::vector<Eigen::Vector3d> &intersections //for debugging
 )
 {
     Eigen::Vector3d trans = agent.transform.translation();
@@ -656,9 +715,10 @@ void cs2::cs2_application::compute_can_move(
     float yaw = rpy.z();
     float check_value = 0.5 * 0.55; //TODO: get pref_speed through parameter
 
-    std::vector<Eigen::Vector3d> intersections;
+    visibility_graph::global_map copy = orca_obstacle_map;
 
     for(int i = 0; i<6; i++){
+        std::vector<Eigen::Vector3d> intersection; 
         Eigen::Vector3d dpos;
         switch(i) { 
             case 0: 
@@ -683,22 +743,24 @@ void cs2::cs2_application::compute_can_move(
         // move position w.r.t. current yaw 
         Eigen::Vector3d dir = Eigen::Vector3d(
             dpos.x()*std::cos(yaw) - dpos.y()*std::sin(yaw),
-            dpos.x()*std::sin(yaw) + dpos.y()*std::sin(yaw),
+            dpos.x()*std::sin(yaw) + dpos.y()*std::cos(yaw),
             dpos.z()
         );
         std::pair<Eigen::Vector3d, Eigen::Vector3d> s_e;
-        s_e.first = trans;
+        float margin = 0.06;
+        s_e.first = trans + dir * margin; //to prevent including current position
         s_e.second = trans + dir * check_value;
         
-        visibility_graph::global_map copy = orca_obstacle_map;
-        get_line_polygon_intersection(copy, s_e, intersections);
+        get_line_polygon_intersection(copy, s_e, intersection);
         std::vector<std::pair<std::string, float>> distance_list;
        
-        if (!intersections.empty()){
+        if (!intersection.empty()){
+            intersections.insert(intersections.end(), intersection.begin(), intersection.end());
             result.push_back(false); //can't move 
         }
         else{ 
             // find unit closest to the moving line
+            RCLCPP_INFO(this->get_logger(), "[%s] unit distance : ", mykey.c_str());
             for (auto &[key, other_agent] : agents_states){
                 if (strcmp(mykey.c_str(), key.c_str()) == 0)
                     continue;
@@ -708,10 +770,9 @@ void cs2::cs2_application::compute_can_move(
                 Eigen::Vector3d other_trans = other_agent.transform.translation();
                 std::pair<std::string, float> tmp_pair;
                 tmp_pair.first = key; 
-                double dist_to_line; 
-                if (!get_point_to_line_3d(other_trans, s_e.first, s_e.second, dist_to_line))
-                    continue;
+                double dist_to_line = get_distance_to_line_3d(other_trans, s_e.first, s_e.second);
                 tmp_pair.second = dist_to_line;
+                RCLCPP_INFO(this->get_logger(),"%s, %f, ", key.c_str(), dist_to_line);
                 distance_list.push_back(tmp_pair);
             }
             auto it = std::min_element(
@@ -728,8 +789,14 @@ void cs2::cs2_application::compute_can_move(
                 // auto rvo_other = rvo_agents.find(it->first);
                 // TODO: Add public getter for radius or make it accessible
                 double combined_r = 0.275 + 0.275; // Default radius (protected zone)
-                if (it->second < combined_r)
+                if (it->second < combined_r){
+                    RCLCPP_INFO(this->get_logger(),"minimum unit distance : %s, %f, dir : %d",it->first.c_str(), it->second, i);
                     result.push_back(false);
+                    
+                    auto debug = agents_states.find(it->first);
+                    intersections.push_back(debug->second.transform.translation());
+                    continue;
+                }
             }
             result.push_back(true);
         }
@@ -789,7 +856,7 @@ size_t cs2::cs2_application::do_laser_action(
         for (auto &[dist, eval_agent]: sorted_neighbor){
             Eigen::Vector3d other_trans = eval_agent.position_.cast<double>();
             double dist_to_line; 
-            if (!get_point_to_line_3d(other_trans, s_e.first, s_e.second, dist_to_line))
+            if (!check_point_on_line_3d(other_trans, s_e.first, s_e.second, dist_to_line))
                 continue;
             if (dist_to_line < 0.06){ // refer to URDF collision radius
                 // TODO : provide hit radius as parameter
@@ -802,7 +869,7 @@ size_t cs2::cs2_application::do_laser_action(
 }
 
 void cs2::cs2_application::get_line_polygon_intersection(
-    visibility_graph::global_map g_m, std::pair<Eigen::Vector3d, Eigen::Vector3d> s_e, std::vector<Eigen::Vector3d>& intersections
+    visibility_graph::global_map& g_m, std::pair<Eigen::Vector3d, Eigen::Vector3d> s_e, std::vector<Eigen::Vector3d>& intersections
 )
 {   
     for (visibility_graph::obstacle &obs : g_m.obs){
@@ -826,9 +893,9 @@ void cs2::cs2_application::get_line_polygon_intersection(
         
         // base vertices
         for (int i = 0; i < obs_vert_size; i++){
-            i = i % obs_vert_size;
+            int next_i = (i+1) % obs_vert_size;
             Eigen::Vector3d tmp_pop = Eigen::Vector3d(obs.v[i].x(), obs.v[i].y(), obs.h.first);
-            Eigen::Vector3d tmp_n = Eigen::Vector3d(obs.v[i+1].y() - obs.v[i].y(), - obs.v[i+1].x() + obs.v[i].x(), 0);
+            Eigen::Vector3d tmp_n = Eigen::Vector3d(obs.v[next_i].y() - obs.v[i].y(), - obs.v[next_i].x() + obs.v[i].x(), 0);
             Eigen::Vector3d result; 
             if(visibility_graph::get_line_plane_intersection(s_e, tmp_n, tmp_pop, result)){
                 intersections.push_back(result);
@@ -837,23 +904,45 @@ void cs2::cs2_application::get_line_polygon_intersection(
     }
 }
 
-bool cs2::cs2_application::get_point_to_line_3d(
-        Eigen::Vector3d p, Eigen::Vector3d start, Eigen::Vector3d end,
-        double &distance){
+double cs2::cs2_application::get_distance_to_line_3d(
+        Eigen::Vector3d p, Eigen::Vector3d start, Eigen::Vector3d end
+    ){
     Eigen::Vector3d tmp1 = p - start; 
     Eigen::Vector3d tmp2 = end - start; 
-    Eigen::Vector3d cross = tmp1.cross(tmp2);
     double epsilon = 0.0001;
     
-    double t = tmp1.dot(tmp2) / tmp2.dot(tmp2);
-    if (t < 0.0 || t > 1.0)
-        return false;
-    Eigen::Vector3d proj = start + t * tmp2; 
+    if(tmp2.norm() < epsilon) 
+        return tmp1.norm();
 
+    double t = tmp1.dot(tmp2) / tmp2.dot(tmp2);
+    if (t < 0.0){
+        return (p - start).norm();
+    }else if (t > 1.0){
+        return (p - end).norm();
+
+    }else{
+        Eigen::Vector3d proj = start + t * tmp2; 
+        return (p - proj).norm();
+    }
+}
+
+bool cs2::cs2_application::check_point_on_line_3d(
+        Eigen::Vector3d p, Eigen::Vector3d start, Eigen::Vector3d end,
+        double& distance
+    ){
+    Eigen::Vector3d tmp1 = p - start; 
+    Eigen::Vector3d tmp2 = end - start; 
+    double epsilon = 0.0001;
+    
     if(tmp2.norm() < epsilon) 
         return false;
-    else {
+
+    double t = tmp1.dot(tmp2) / tmp2.dot(tmp2);
+    if (t < 0.0 || t > 1.0){
+        return false;
+    }else{
+        Eigen::Vector3d proj = start + t * tmp2; 
         distance = (p - proj).norm();
+        return true;
     }
-    return true;
 }

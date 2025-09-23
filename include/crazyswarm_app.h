@@ -413,7 +413,9 @@ namespace cs2
 
             void compute_can_move(std::string mykey, 
                 const agent_state& agent, 
-                std::vector<bool> &result);
+                std::vector<bool> &result,
+                std::vector<Eigen::Vector3d> &intersections
+            );
 
             size_t do_laser_action(
                 std::string mykey, const agent_state& agent, 
@@ -421,20 +423,30 @@ namespace cs2
             );
 
             void get_line_polygon_intersection(
-                visibility_graph::global_map g_m, std::pair<Eigen::Vector3d, Eigen::Vector3d> s_e, 
+                visibility_graph::global_map& g_m, std::pair<Eigen::Vector3d, Eigen::Vector3d> s_e, 
                 std::vector<Eigen::Vector3d> &intersections);
             
-            bool get_point_to_line_3d(
-                Eigen::Vector3d p, Eigen::Vector3d start, Eigen::Vector3d end,
-                double &distance);
+            // p does not have to be on the line segment
+            double get_distance_to_line_3d(
+                Eigen::Vector3d p, Eigen::Vector3d start, Eigen::Vector3d end);
             
+            // check whether p is on the line segment
+            bool check_point_on_line_3d(
+                Eigen::Vector3d p, Eigen::Vector3d start, Eigen::Vector3d end, double& distance
+            );
+
             // helper function
             int id_from_key(std::string key, int remove = 3);
 
             std::unique_ptr<PointCloud2> convert_cloud(
                 const std::vector<std::pair<float, const Eval_agent>>& obstacles);
             
+            std::unique_ptr<PointCloud2> convert_points(
+                const std::vector<Eigen::Vector3d>& points);
+
             std::unique_ptr<MarkerArray> convert_move(
-                Eigen::Vector3d trans, const std::vector<bool>& can_move);
+                std::string mykey, 
+                const agent_state& agent, 
+                const std::vector<bool>& can_move);
     };
 }
