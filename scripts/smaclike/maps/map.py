@@ -48,10 +48,10 @@ class MapInfo(object):
     def from_file(cls, filename, is_json):
         map_info_dict = None 
         with open(filename) as f:
-            if is_json : 
-                map_info_dict = json.load(f)
-            else : 
-                map_info_dict = yaml.safe_load(f)
+            if is_json :
+                map_info_dict = json.load(f)   # JSON maps are flat (no smaclike_map wrapper)
+            else :
+                map_info_dict = yaml.safe_load(f)['smaclike_map']
         
         #custom_unit_path = '.'
         groups = []
@@ -64,7 +64,7 @@ class MapInfo(object):
             map_info_dict['groups'] = groups
             map_info_dict['attack_point'] = list(map_info_dict['attack_point'])
         
-        else : 
+        else :
             for group in map_info_dict['groups']:
                 group['faction'] = Faction(group['faction'])
                 group['unit'] = UnitType.from_str(group['unit'])
@@ -72,19 +72,24 @@ class MapInfo(object):
             map_info_dict['groups'] = groups
             map_info_dict['attack_point'] = list(map_info_dict['attack_point'])
 
-        if is_json : 
-            if "obstacle_preset" in map_info_dict : 
+        if is_json :
+            if "obstacle_preset" in map_info_dict :
                 map_size, map_info_dict["maca_obs"], map_info_dict["render_obs"] = OBSTACLE_PRESETS[map_info_dict['obstacle_preset']].value
                 map_info_dict['width'],map_info_dict['length'],map_info_dict['height'] = map_size
                 del map_info_dict["obstacle_preset"]
-            else : 
+            else :
                 map_size, map_info_dict["maca_obs"], map_info_dict["render_obs"] = OBSTACLE_PRESETS['EMPTY'].value
                 map_info_dict['width'],map_info_dict['length'],map_info_dict['height'] = map_size
-        else : 
-            ### TODO : fix ###
-            map_size = [4,4,4]
+        else :
+            # YAML maps use 'num_ally_units'; MapInfo expects 'num_allied_units'.
+            if 'num_ally_units' in map_info_dict:
+                map_info_dict['num_allied_units'] = map_info_dict.pop('num_ally_units')
+            # YAML maps do not specify obstacles — stub out the fields MapInfo requires.
+            map_size = [4, 4, 4]
             map_info_dict['width'], map_info_dict['length'], map_info_dict['height'] = map_size
-            if "obstacle_preset" in map_info_dict : 
+            map_info_dict.setdefault('maca_obs', [])
+            map_info_dict.setdefault('render_obs', [])
+            if "obstacle_preset" in map_info_dict:
                 del map_info_dict["obstacle_preset"]
             
         return cls(**map_info_dict)

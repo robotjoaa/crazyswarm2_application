@@ -175,19 +175,18 @@ namespace cs2
                 height_range = 
                     std::make_pair(height_range_vector[0], height_range_vector[1]);
 
-                // TODO : get this as parameter from config 
-                // smaclike
-                int NUM_DRONES = 2;
-                // n_agents / n_enemies
-                int n_agents = 1;
-                int n_enemies = NUM_DRONES - n_agents;
-
                 // load crazyflies from params
                 auto node_parameters_iface = this->get_node_parameters_interface();
                 const std::map<std::string, rclcpp::ParameterValue> &parameter_overrides =
                     node_parameters_iface->get_parameter_overrides();
 
                 auto cf_names = extract_names(parameter_overrides, "robots");
+                this->NUM_DRONES = (int)cf_names.size();
+                // Allies are the lowest-numbered cf_N drones; derive n_agents from config.
+                // Defaults to half the total if not configured.
+                this->declare_parameter("n_agents", (int)(cf_names.size() / 2));
+                this->n_agents = this->get_parameter("n_agents").get_parameter_value().get<int>();
+                this->n_enemies = this->NUM_DRONES - this->n_agents;
                 for (const auto &name : cf_names) 
                 {
                     RCLCPP_INFO(this->get_logger(), "creating agent map for '%s'", name.c_str());
@@ -203,6 +202,9 @@ namespace cs2
                     aff.translation() = Eigen::Vector3d(pos[0], pos[1], pos[2]);
                     a_s.t = clock.now();
                     a_s.transform = aff;
+                    a_s.target_yaw = 0.0;
+                    a_s.yaw_rate = 0.0;
+                    a_s.hover_yaw_control_active = false;
                     a_s.flight_state = IDLE;
                     a_s.radio_connection = false;
                     a_s.completed = false;
@@ -247,6 +249,20 @@ namespace cs2
                     tmp.move_publisher = 
                         this->create_publisher<MarkerArray>(name + "/move", 7);
                     agents_comm.insert({name, tmp});
+
+                    laser_attack_services.insert({
+                        name,
+                        this->create_service<GoTo>(
+                            name + "/laser_attack",
+                            [this, name](
+                                const std::shared_ptr<rmw_request_id_t> request_header,
+                                const std::shared_ptr<GoTo::Request> request,
+                                std::shared_ptr<GoTo::Response> response)
+                            {
+                                this->laser_attack_service_callback(
+                                    name, request_header, request, response);
+                            })
+                    });
                 
                     Agent new_rvo2_agent = Agent(
                         id, (float)(1/planning_rate), 10, (float)max_velocity, 
@@ -285,6 +301,9 @@ namespace cs2
 
                 agent_state_publisher = 
                     this->create_publisher<AgentsStateFeedback>("agents", 7);
+
+                command_publisher =
+                    this->create_publisher<UserCommand>("user", 30);
 
                 subscription_user = 
                     this->create_subscription<UserCommand>("user", 30, std::bind(&cs2_application::user_callback, this, _1));
@@ -358,6 +377,7 @@ namespace cs2
 
             std::map<std::string, rclcpp::Subscription<PoseStamped>::SharedPtr> pose_sub;
             std::map<std::string, rclcpp::Subscription<Twist>::SharedPtr> vel_sub;
+            std::map<std::string, rclcpp::Service<GoTo>::SharedPtr> laser_attack_services;
 
             std::map<std::string, Agent> rvo_agents;
 
@@ -377,6 +397,7 @@ namespace cs2
             kdtree *kd_tree;
 
             rclcpp::Subscription<UserCommand>::SharedPtr subscription_user;
+            rclcpp::Publisher<UserCommand>::SharedPtr command_publisher;
 
             rclcpp::Publisher<NamedPoseArray>::SharedPtr pose_publisher;
             rclcpp::Publisher<AgentsStateFeedback>::SharedPtr agent_state_publisher;
@@ -389,6 +410,12 @@ namespace cs2
                 Eigen::Vector3d &desired, std::string mykey, agent_state state);
 
             void user_callback(const UserCommand::SharedPtr msg);
+
+            void laser_attack_service_callback(
+                const std::string &agent_name,
+                const std::shared_ptr<rmw_request_id_t> request_header,
+                const std::shared_ptr<GoTo::Request> request,
+                std::shared_ptr<GoTo::Response> response);
 
             void pose_callback(
                 const PoseStamped::SharedPtr msg, 

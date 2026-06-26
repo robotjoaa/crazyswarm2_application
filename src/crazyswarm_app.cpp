@@ -92,7 +92,32 @@ void cs2::cs2_application::user_callback(
             iterator_states->second.flight_state = MOVE_VELOCITY;
             iterator_states->second.completed = false;
             iterator_states->second.target_yaw = copy.yaw;
+            iterator_states->second.yaw_rate = copy.yaw_rate;
+            iterator_states->second.hover_yaw_control_active = false;
             
+            agent_update_mutex.unlock();
+        }
+    }
+    // handle turn-in-place during hover
+    else if (strcmp(copy.cmd.c_str(), dict.turn.c_str()) == 0)
+    {
+        for (size_t i = 0; i < copy.uav_id.size(); i++)
+        {
+            auto iterator_states = agents_states.find(copy.uav_id[i]);
+            if (iterator_states == agents_states.end())
+                continue;
+
+            agent_update_mutex.lock();
+            while (!iterator_states->second.target_queue.empty())
+                iterator_states->second.target_queue.pop();
+
+            // Hold current position and rotate to target yaw.
+            iterator_states->second.previous_target =
+                iterator_states->second.transform.translation();
+            iterator_states->second.target_yaw = copy.yaw;
+            iterator_states->second.hover_yaw_control_active = true;
+            iterator_states->second.flight_state = HOVER;
+            iterator_states->second.completed = false;
             agent_update_mutex.unlock();
         }
     }
@@ -242,6 +267,7 @@ void cs2::cs2_application::user_callback(
 
                 iterator_states->second.flight_state = MOVE;
                 iterator_states->second.completed = false;
+                iterator_states->second.hover_yaw_control_active = false;
 
                 RCLCPP_INFO(this->get_logger(), "go_to sent for %s (%lfms)", 
                     iterator->first.c_str(), (clock.now() - start).seconds()*1000.0);
@@ -273,52 +299,113 @@ void cs2::cs2_application::user_callback(
     // handle attack
     else if (strcmp(copy.cmd.c_str(), dict.attack.c_str()) == 0)
     {
-        // // check visibility on target position
-        // // check uav_id length is 2 : src, target
-        // // copy.uav_id.size() == 2
-        
-        // // get position and distance
-        // auto iterator = agents_comm.find(copy.uav_id[0]);
-        // auto iterator_states = agents_states.find(copy.uav_id[0]);
-        // if (iterator != agents_comm.end() && iterator_states != agents_states.end()){
-        //     iterator 
-        // }
-        // // check visibility on copy.goal and identify who's hit
-        // // including other units 
-        
-        // // only do visibility when obs are not empty
-        // if (!orca_obstacle_map.obs.empty() && !copy.is_external)
-        // {
-        //     orca_obstacle_map.start_end.first = 
-        //         iterator_states->second.transform.translation();
-        //     orca_obstacle_map.start_end.second = 
-        //         Eigen::Vector3d(copy.goal.x, copy.goal.y, copy.goal.z);
-        //     std::string frame = "nwu";
-        //     visibility_graph::visibility vg(orca_obstacle_map, frame, 1);
-        // }
+        RCLCPP_INFO(this->get_logger(), "received attack command: n=%zu goal=(%.3f %.3f %.3f)",
+            copy.uav_id.size(), copy.goal.x, copy.goal.y, copy.goal.z);
 
-        // // modify mission_capable of that agent
-        // agent_update_mutex.lock();
-        // while (!iterator_states->second.target_queue.empty())
-        //     iterator_states->second.target_queue.pop();
-    
-        //     iterator_states->second.target_queue.push(
-        //         Eigen::Vector3d(copy.goal.x, copy.goal.y, copy.goal.z)
-        //     );
+        if (copy.uav_id.empty())
+        {
+            RCLCPP_ERROR(this->get_logger(), "attack command missing source uav_id");
+            return;
+        }
 
-        //     iterator_states->second.flight_state = MOVE;
-        //     iterator_states->second.completed = false;
+        auto attacker_it = agents_states.find(copy.uav_id.front());
+        if (attacker_it == agents_states.end())
+        {
+            RCLCPP_ERROR(this->get_logger(), "attack source not found: %s", copy.uav_id.front().c_str());
+            return;
+        }
 
-        // //RCLCPP_INFO(this->get_logger(), "go_to sent for %s (%lfms)", 
-        // //  iterator->first.c_str(), (clock.now() - start).seconds()*1000.0);
+        if (!attacker_it->second.mission_capable)
+        {
+            RCLCPP_INFO(this->get_logger(), "attack ignored: %s not mission capable",
+                copy.uav_id.front().c_str());
+            return;
+        }
 
-        RCLCPP_INFO(this->get_logger(), "%s", "attack_sent");
-        // agent_update_mutex.unlock();
+        Eigen::Vector3d target_point(copy.goal.x, copy.goal.y, copy.goal.z);
+        if (copy.uav_id.size() >= 2)
+        {
+            auto target_state_it = agents_states.find(copy.uav_id[1]);
+            if (target_state_it != agents_states.end())
+            {
+                target_point = target_state_it->second.transform.translation();
+                RCLCPP_INFO(this->get_logger(),
+                    "attack target id=%s resolved to current pos (%.3f %.3f %.3f)",
+                    copy.uav_id[1].c_str(), target_point.x(), target_point.y(), target_point.z());
+            }
+            else
+            {
+                RCLCPP_WARN(this->get_logger(),
+                    "attack target id not found: %s, fallback to goal point", copy.uav_id[1].c_str());
+            }
+        }
+
+        const size_t hit_id = do_laser_action(copy.uav_id.front(), attacker_it->second, target_point);
+        if (hit_id == 0)
+        {
+            RCLCPP_INFO(this->get_logger(), "%s", "attack_sent (no hit)");
+            return;
+        }
+
+        std::string hit_key;
+        for (auto &[key, state] : agents_states)
+        {
+            (void)state;
+            if ((size_t)id_from_key(key) == hit_id)
+            {
+                hit_key = key;
+                break;
+            }
+        }
+
+        if (hit_key.empty())
+        {
+            RCLCPP_WARN(this->get_logger(), "attack hit unknown id=%zu", hit_id);
+            return;
+        }
+
+        auto hit_state_it = agents_states.find(hit_key);
+        auto hit_comm_it = agents_comm.find(hit_key);
+        if (hit_state_it != agents_states.end())
+        {
+            agent_update_mutex.lock();
+            hit_state_it->second.mission_capable = false;
+            agent_update_mutex.unlock();
+        }
+
+        if (hit_state_it != agents_states.end() && hit_comm_it != agents_comm.end())
+            send_land_and_update(hit_state_it, hit_comm_it);
+
+        RCLCPP_INFO(this->get_logger(), "attack_sent (hit %s)", hit_key.c_str());
 
     }
     else
         RCLCPP_ERROR(this->get_logger(), "wrong command type, resend");
 
+}
+
+void cs2::cs2_application::laser_attack_service_callback(
+    const std::string &agent_name,
+    const std::shared_ptr<rmw_request_id_t> request_header,
+    const std::shared_ptr<GoTo::Request> request,
+    std::shared_ptr<GoTo::Response> response)
+{
+    (void)request_header;
+    (void)response;
+
+    UserCommand command;
+    command.cmd = "attack";
+    command.uav_id.push_back(agent_name);
+    command.goal = request->goal;
+    command.yaw = request->yaw;
+    command.is_external = false;
+
+    command_publisher->publish(command);
+
+    RCLCPP_INFO(this->get_logger(),
+        "laser_attack request %s -> (%.3f %.3f %.3f)",
+        agent_name.c_str(),
+        request->goal.x, request->goal.y, request->goal.z);
 }
 
 

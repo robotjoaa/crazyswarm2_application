@@ -1,0 +1,16 @@
+{
+    "name": "test",
+    "num_allied_units": 1,
+    "num_enemy_units": 1,
+    "groups": [
+        {
+            "x": 0.0, "y": 0.0, "z": 1.5, "roll":0, "pitch":0, "yaw":0, "faction": "ALLY", "units": {"DRONE" : 1}
+
+        },
+        {
+            "x": 0.8, "y": 1.38, "z": 2, "roll":0, "pitch":0, "yaw":-2.09, "faction": "ENEMY", "units": {"WEAK_DRONE" : 1}
+        }
+    ],
+    "attack_point": [[0, 0, 2]],
+    "obstacle_preset": "BOX_V2"
+}

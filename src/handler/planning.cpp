@@ -205,6 +205,33 @@ void cs2::cs2_application::handler_timer_callback()
                 // vel_msg.yaw = agent.previous_yaw * rad_to_deg;
                 vel_msg.yaw_rate = 0.0;
 
+                if (agent.hover_yaw_control_active)
+                {
+                    Eigen::Vector3d rpy = euler_rpy(agent.transform.linear());
+                    double yaw_error = agent.target_yaw - rpy.z() * rad_to_deg;
+                    if (yaw_error < -180.0)
+                        yaw_error += 360.0;
+                    else if (yaw_error > 180.0)
+                        yaw_error -= 360.0;
+
+                    if (yaw_error > 1.0)
+                    {
+                        vel_msg.yaw_rate = 0.15;
+                        agent.completed = false;
+                    }
+                    else if (yaw_error < -1.0)
+                    {
+                        vel_msg.yaw_rate = -0.15;
+                        agent.completed = false;
+                    }
+                    else
+                    {
+                        vel_msg.yaw_rate = 0.0;
+                        agent.hover_yaw_control_active = false;
+                        agent.completed = true;
+                    }
+                }
+
                 // Hover hover_msg;
                 // hover_msg.header.stamp = clock.now();
                 // hover_msg.vx = 0;
@@ -277,6 +304,7 @@ void cs2::cs2_application::handler_timer_callback()
                     {
                         agent.flight_state = HOVER;
                         agent.completed = true;
+                        agent.yaw_rate = 0.0;
                     }
                     // internal tracking
                     else
@@ -371,7 +399,12 @@ void cs2::cs2_application::handler_timer_callback()
                 // std::cout << rpy.z() << "/" << wrap_pi(yaw_target) / rad_to_deg << std::endl;
                 // vel_msg.yaw = wrap_pi(yaw_target);
                 double yaw_rate_target;
-                if (wrap_pi(yaw_target) > 1e-5)
+                if (std::abs(agent.yaw_rate) > 1e-5)
+                {
+                    // Explicit yaw_rate commanded by Python — bypass target_yaw estimation.
+                    yaw_rate_target = agent.yaw_rate;
+                }
+                else if (wrap_pi(yaw_target) > 1e-5)
                     yaw_rate_target = 0.15;
                 else if (wrap_pi(yaw_target) < -1e-5)
                     yaw_rate_target = -0.15;
@@ -420,16 +453,20 @@ void cs2::cs2_application::handler_timer_callback()
         target.color.b = 1.0;
         target.color.a = 1.0;
 
-        if(!agent.target_queue.empty())
+        // Always publish current position so rviz_visualizer can track it
+        // even during LAND/HOVER when the target queue is empty.
         {
-            // copy to prevent deleting the main target queue
-            std::queue<Eigen::Vector3d> target_copy = agent.target_queue;
-
             geometry_msgs::msg::Point p;
             p.x = agent.transform.translation().x();
             p.y = agent.transform.translation().y();
             p.z = agent.transform.translation().z();
             target.points.push_back(p);
+        }
+
+        if(!agent.target_queue.empty())
+        {
+            // copy to prevent deleting the main target queue
+            std::queue<Eigen::Vector3d> target_copy = agent.target_queue;
 
             while (!target_copy.empty())
             {
@@ -760,7 +797,7 @@ void cs2::cs2_application::compute_can_move(
         }
         else{ 
             // find unit closest to the moving line
-            RCLCPP_INFO(this->get_logger(), "[%s] unit distance : ", mykey.c_str());
+            // RCLCPP_INFO(this->get_logger(), "[%s] unit distance : ", mykey.c_str());
             for (auto &[key, other_agent] : agents_states){
                 if (strcmp(mykey.c_str(), key.c_str()) == 0)
                     continue;
@@ -772,7 +809,7 @@ void cs2::cs2_application::compute_can_move(
                 tmp_pair.first = key; 
                 double dist_to_line = get_distance_to_line_3d(other_trans, s_e.first, s_e.second);
                 tmp_pair.second = dist_to_line;
-                RCLCPP_INFO(this->get_logger(),"%s, %f, ", key.c_str(), dist_to_line);
+                //RCLCPP_INFO(this->get_logger(),"%s, %f, ", key.c_str(), dist_to_line);
                 distance_list.push_back(tmp_pair);
             }
             auto it = std::min_element(
@@ -827,22 +864,41 @@ size_t cs2::cs2_application::do_laser_action(
                 closest_obs_distance = tmp_dist;
         }
     }
-    // for visible ally and visible enemy, insert if it is closer than closest_obs_distance
+    // getNeighbors() stores squared distance. Compare against squared obstacle distance.
+    const double closest_obs_distance_sq = closest_obs_distance * closest_obs_distance;
+
+    // for visible ally and visible enemy, insert if it is closer than the obstacle
     std::vector<std::pair<float, RVO::Eval_agent>> sorted_neighbor;
     auto rvo_current = rvo_agents.find(mykey);
+    if (rvo_current == rvo_agents.end()){
+        RCLCPP_WARN(this->get_logger(), "do_laser_action: rvo agent not found for %s", mykey.c_str());
+        return 0;
+    }
+
+    float communication_radius_sq_float =
+        (float)(communication_radius * communication_radius);
+    // Refresh visibility here because attack can be issued while the agent is hovering
+    // and neighbor visibility may be stale if no recent MOVE_VELOCITY update happened.
+    rvo_current->second.updateVisibility(communication_radius_sq_float);
+
     auto vis_ally = rvo_current->second.getNeighbors(ALLY);
     auto vis_enemy = rvo_current->second.getNeighbors(ENEMY);
+
+    RCLCPP_INFO(this->get_logger(),
+        "do_laser_action %s -> target(%.2f %.2f %.2f), vis ally=%zu enemy=%zu, closest_obs=%.2f",
+        mykey.c_str(), target_point.x(), target_point.y(), target_point.z(),
+        vis_ally.size(), vis_enemy.size(), closest_obs_distance);
 
     // if there exists neighbor
     if (!vis_ally.empty() || !vis_enemy.empty()){
         for (const auto& item : vis_ally) {
-            if (item.first < closest_obs_distance) {
+            if ((double)item.first < closest_obs_distance_sq) {
                 sorted_neighbor.push_back(std::make_pair(item.first, item.second));
             }
         }
 
         for (const auto& item : vis_enemy) {
-            if (item.first < closest_obs_distance) {
+            if ((double)item.first < closest_obs_distance_sq) {
                 sorted_neighbor.push_back(std::make_pair(item.first, item.second));
             }
         }
@@ -858,6 +914,10 @@ size_t cs2::cs2_application::do_laser_action(
             double dist_to_line; 
             if (!check_point_on_line_3d(other_trans, s_e.first, s_e.second, dist_to_line))
                 continue;
+            RCLCPP_INFO(this->get_logger(),
+                "laser candidate id=%zu dist_sq=%.3f line_dist=%.3f pos=(%.2f %.2f %.2f)",
+                eval_agent.id_, (double)dist, dist_to_line,
+                other_trans.x(), other_trans.y(), other_trans.z());
             if (dist_to_line < 0.06){ // refer to URDF collision radius
                 // TODO : provide hit radius as parameter
                 result = eval_agent.id_;

@@ -31,8 +31,10 @@
 #include "rviz_2d_overlay_msgs/msg/overlay_text.hpp"
 #include "crazyswarm_application/msg/agents_state_feedback.hpp"
 #include "crazyswarm_application/msg/agent_state.hpp"
+#include "crazyswarm_application/msg/user_command.hpp"
 
 #include "std_msgs/msg/color_rgba.hpp"
+#include "builtin_interfaces/msg/duration.hpp"
 
 #include <tf2_ros/transform_broadcaster.h>
 
@@ -48,6 +50,7 @@ using geometry_msgs::msg::TransformStamped;
 using rviz_2d_overlay_msgs::msg::OverlayText;
 using crazyswarm_application::msg::AgentsStateFeedback;
 using crazyswarm_application::msg::AgentState;
+using crazyswarm_application::msg::UserCommand;
 using std_msgs::msg::ColorRGBA;
 
 using namespace std::chrono_literals;
@@ -66,8 +69,11 @@ class RvizVisualizer : public rclcpp::Node
         rclcpp::Publisher<Marker>::SharedPtr obstacle_publisher;
         rclcpp::Publisher<Marker>::SharedPtr orca_obstacle_publisher;
         rclcpp::Publisher<Marker>::SharedPtr visibility_obstacle_publisher;
+        rclcpp::Publisher<MarkerArray>::SharedPtr laser_publisher;
 
         rclcpp::Subscription<AgentsStateFeedback>::SharedPtr agent_state_subscriber;
+        rclcpp::Subscription<MarkerArray>::SharedPtr targets_subscriber;
+        rclcpp::Subscription<UserCommand>::SharedPtr user_command_subscriber;
 
         rclcpp::TimerBase::SharedPtr visualizing_timer;
 
@@ -83,6 +89,7 @@ class RvizVisualizer : public rclcpp::Node
         std::vector<visibility_graph::obstacle> global_obstacle_list;
         std::vector<visibility_graph::obstacle> visibility_obstacle_list;
         std::vector<visibility_graph::obstacle> orca_obstacle_list;
+        std::map<int, Eigen::Vector3d> latest_agent_positions;
 
         visualization_msgs::msg::Marker global_obs_visualize;
         visualization_msgs::msg::Marker visibility_obs_visualize;
@@ -90,6 +97,8 @@ class RvizVisualizer : public rclcpp::Node
 
         double visibility_expansion_factor;
         double orca_static_expansion_factor;
+        int n_agents_;   // drones with id <= n_agents_ are allies
+        common::string_dictionary dict;
 
         void visualizing_timer_callback()
         {
@@ -101,97 +110,237 @@ class RvizVisualizer : public rclcpp::Node
         void agents_state_callback(
             const AgentsStateFeedback::SharedPtr msg)
         {
-            rclcpp::Time now = clock.now();
-
             AgentsStateFeedback copy = *msg;
             OverlayText text_msg;
             text_msg.action = OverlayText::ADD;
             text_msg.horizontal_alignment = OverlayText::LEFT;
             text_msg.vertical_alignment = OverlayText::TOP;
-            text_msg.width = 256;
+            text_msg.width = 320;
             text_msg.height = 512;
-            text_msg.text_size = 8.0;
-            text_msg.line_width = 256;
-            ColorRGBA fg;
-            fg.r = 25; fg.g = 255; fg.b = 240; fg.a = 0.8; 
-            // text_msg.fg_color = fg; 
+            text_msg.text_size = 9.0;
+            text_msg.line_width = 320;
             text_msg.font = "DejaVu Sans Mono";
-            
+
             std::string text;
             std::map<int, agent_state> agents_map;
 
-            // copy agent messages into local states
             for (auto &obs : copy.pre_obs)
             {
                 auto &agent = obs.agent;
                 std::string str_copy = agent.id;
-                // Remove cf_ from cf_XX
-                str_copy.erase(0,3);
+                str_copy.erase(0, 3); // remove "cf_"
                 int id = std::stoi(str_copy);
 
                 agent_state state;
                 state.flight_state = agent.flight_state;
                 state.radio_connection = agent.connected;
                 state.completed = agent.completed;
-
                 agents_map.insert({id, state});
             }
 
-            for (auto it = agents_map.begin(); 
-                it != agents_map.end(); it++)
+            for (auto it = agents_map.begin(); it != agents_map.end(); it++)
                 call_state_text(it, text);
 
             text_msg.text = text;
             text_publisher->publish(text_msg);
         }
 
-        void call_state_text(
-            std::map<int, agent_state>::iterator agent, 
-            std::string &text)
-        {  
-            text += "cf" + std::to_string(agent->first) + " ";
-
-            // cf1, cf10, cf100
-            if (agent->first / 10 == 0)
-                text += "-";
-            if (agent->first / 100 == 0)
-                text += "-";
-
-            text += " connected:";
-            text = text + (agent->second.radio_connection ? "y" : "n") + " task:";
-            text = text + (agent->second.completed ? "y" : "n") + " state:";
-            switch (agent->second.flight_state)
+        void targets_callback(const MarkerArray::SharedPtr msg)
+        {
+            for (const auto &marker : msg->markers)
             {
-                case IDLE:
-                    text += "IDL";
-                    break;
-                case TAKEOFF:
-                    text += "TKF";
-                    break;
-                case MOVE:
-                    text += "MOV";
-                    break;
-                case MOVE_VELOCITY:
-                    text += "MVV";
-                    break;
-                case INTERNAL_TRACKING:
-                    text += "INT";
-                    break;
-                case HOVER:
-                    text += "HVR";
-                    break;
-                case LAND:
-                    text += "LND";
-                    break;
-                case EMERGENCY:
-                    text += "EMG";
-                    break;
-                default:
-                    text += "ERR";
-                    break;
+                if (marker.points.empty())
+                    continue;
+                latest_agent_positions[marker.id] = Eigen::Vector3d(
+                    marker.points.front().x,
+                    marker.points.front().y,
+                    marker.points.front().z);
+            }
+        }
+
+        void user_command_callback(const UserCommand::SharedPtr msg)
+        {
+            if (msg->cmd != dict.attack)
+                return;
+
+            RCLCPP_INFO(this->get_logger(), "rviz attack cmd received: n=%zu goal=(%.3f %.3f %.3f)",
+                msg->uav_id.size(), msg->goal.x, msg->goal.y, msg->goal.z);
+
+            MarkerArray laser_array;
+            int marker_id = 0;
+            const rclcpp::Time now = clock.now();
+
+            if (msg->uav_id.empty())
+                return;
+
+            const int agent_id = parse_agent_id(msg->uav_id.front());
+            auto pos_it = latest_agent_positions.find(agent_id);
+            if (pos_it == latest_agent_positions.end()){
+                RCLCPP_WARN(this->get_logger(), "rviz attack skipped: no cached /targets pose for %s",
+                    msg->uav_id.front().c_str());
+                return;
             }
 
-            text += " ";
+            Eigen::Vector3d start = pos_it->second;
+            Eigen::Vector3d end(msg->goal.x, msg->goal.y, msg->goal.z);
+            if (msg->uav_id.size() >= 2)
+            {
+                const int target_id = parse_agent_id(msg->uav_id[1]);
+                auto target_pos_it = latest_agent_positions.find(target_id);
+                if (target_pos_it != latest_agent_positions.end())
+                {
+                    end = target_pos_it->second;
+                    RCLCPP_INFO(this->get_logger(),
+                        "rviz attack target id=%s resolved to current pos (%.3f %.3f %.3f)",
+                        msg->uav_id[1].c_str(), end.x(), end.y(), end.z());
+                }
+            }
+            clip_to_closest_obstacle(start, end);
+
+            // Faction-based laser colours matching SimpleCAAviary convention:
+            //   ally   → laserHitColor  [0,    1,    1   ]  cyan
+            //   enemy  → laserMissColor [0.99, 0.75, 0.79]  pink/rose
+            const bool is_ally = (agent_id > 0 && agent_id <= n_agents_);
+            const float lr = is_ally ? 0.00f : 0.99f;
+            const float lg = is_ally ? 1.00f : 0.75f;
+            const float lb = is_ally ? 1.00f : 0.79f;
+
+            Marker laser;
+            laser.header.frame_id = "/world";
+            laser.header.stamp = now;
+            laser.ns = "laser_attack";
+            laser.id = marker_id++;
+            laser.type = Marker::LINE_LIST;
+            laser.action = Marker::ADD;
+            laser.pose.orientation.w = 1.0;
+            laser.scale.x = 0.06;
+            laser.color.r = lr;
+            laser.color.g = lg;
+            laser.color.b = lb;
+            laser.color.a = 1.0;
+            builtin_interfaces::msg::Duration laser_lifetime;
+            laser_lifetime.sec = 2;
+            laser.lifetime = laser_lifetime;
+
+            geometry_msgs::msg::Point p0;
+            p0.x = start.x(); p0.y = start.y(); p0.z = start.z();
+            geometry_msgs::msg::Point p1;
+            p1.x = end.x(); p1.y = end.y(); p1.z = end.z();
+            laser.points.push_back(p0);
+            laser.points.push_back(p1);
+            laser_array.markers.push_back(laser);
+
+            Marker impact;
+            impact.header = laser.header;
+            impact.ns = "laser_impact";
+            impact.id = marker_id++;
+            impact.type = Marker::SPHERE;
+            impact.action = Marker::ADD;
+            impact.pose.position = p1;
+            impact.pose.orientation.w = 1.0;
+            impact.scale.x = 0.06;
+            impact.scale.y = 0.06;
+            impact.scale.z = 0.06;
+            impact.color.r = lr;
+            impact.color.g = lg;
+            impact.color.b = lb;
+            impact.color.a = 1.0;
+            impact.lifetime = laser_lifetime;
+            laser_array.markers.push_back(impact);
+
+            if (!laser_array.markers.empty())
+                laser_publisher->publish(laser_array);
+        }
+
+        int parse_agent_id(const std::string &name) const
+        {
+            std::smatch match;
+            if (std::regex_search(name, match, std::regex("(\\d+)$")))
+                return std::stoi(match[1].str());
+            return -1;
+        }
+
+        void clip_to_closest_obstacle(const Eigen::Vector3d &start, Eigen::Vector3d &end) const
+        {
+            std::pair<Eigen::Vector3d, Eigen::Vector3d> segment{start, end};
+            std::vector<Eigen::Vector3d> intersections;
+            get_line_polygon_intersection(orca_obstacle_list, segment, intersections);
+            if (intersections.empty())
+                return;
+
+            double closest_dist = (end - start).norm();
+            Eigen::Vector3d closest_point = end;
+            for (const auto &p : intersections)
+            {
+                const double dist = (p - start).norm();
+                if (dist < closest_dist)
+                {
+                    closest_dist = dist;
+                    closest_point = p;
+                }
+            }
+            end = closest_point;
+        }
+
+        void get_line_polygon_intersection(
+            const std::vector<visibility_graph::obstacle> &obs_list,
+            const std::pair<Eigen::Vector3d, Eigen::Vector3d> &s_e,
+            std::vector<Eigen::Vector3d> &intersections) const
+        {
+            for (const auto &obs : obs_list)
+            {
+                const int obs_vert_size = obs.v.size();
+
+                Eigen::Vector3d tmp_pop(obs.c[0], obs.c[1], obs.h.first);
+                Eigen::Vector3d tmp_n(0, 0, -1);
+                Eigen::Vector3d result;
+                if (visibility_graph::get_line_plane_intersection(s_e, tmp_n, tmp_pop, result))
+                    intersections.push_back(result);
+
+                tmp_pop = Eigen::Vector3d(obs.c[0], obs.c[1], obs.h.second);
+                tmp_n = Eigen::Vector3d(0, 0, 1);
+                if (visibility_graph::get_line_plane_intersection(s_e, tmp_n, tmp_pop, result))
+                    intersections.push_back(result);
+
+                for (int i = 0; i < obs_vert_size; i++)
+                {
+                    const int next_i = (i + 1) % obs_vert_size;
+                    tmp_pop = Eigen::Vector3d(obs.v[i].x(), obs.v[i].y(), obs.h.first);
+                    tmp_n = Eigen::Vector3d(
+                        obs.v[next_i].y() - obs.v[i].y(),
+                        -obs.v[next_i].x() + obs.v[i].x(),
+                        0.0);
+                    if (visibility_graph::get_line_plane_intersection(s_e, tmp_n, tmp_pop, result))
+                        intersections.push_back(result);
+                }
+            }
+        }
+
+        void call_state_text(
+            std::map<int, agent_state>::iterator agent,
+            std::string &text)
+        {
+            // Header line: "cf_N  rc:y  task:y"
+            text += "<span style='color:#00fff0;'>cf_" + std::to_string(agent->first) + "</span>";
+            text += "  rc:" + std::string(agent->second.radio_connection ? "<span style='color:#00ff00;'>y</span>" : "<span style='color:#ff4444;'>n</span>");
+            text += "  task:" + std::string(agent->second.completed ? "<span style='color:#00ff00;'>done</span>" : "----");
+            text += "\n";
+
+            // State line: "  state: MOVE_VELOCITY"
+            text += "  state: ";
+            switch (agent->second.flight_state)
+            {
+                case IDLE:              text += "IDLE";           break;
+                case TAKEOFF:           text += "<span style='color:#ffff00;'>TAKEOFF</span>";  break;
+                case MOVE:              text += "<span style='color:#00ff88;'>MOVE</span>";     break;
+                case MOVE_VELOCITY:     text += "<span style='color:#00ff88;'>MOVE_VEL</span>"; break;
+                case INTERNAL_TRACKING: text += "<span style='color:#aaffaa;'>TRACKING</span>"; break;
+                case HOVER:             text += "<span style='color:#44aaff;'>HOVER</span>";    break;
+                case LAND:              text += "<span style='color:#ffaa00;'>LAND</span>";     break;
+                case EMERGENCY:         text += "<span style='color:#ff0000;'>EMERGENCY</span>"; break;
+                default:                text += "???";            break;
+            }
+            text += "\n---\n";
         }
 
         void obstacles_to_vertices_vector(
@@ -285,6 +434,7 @@ class RvizVisualizer : public rclcpp::Node
             obstacle_publisher = this->create_publisher<Marker>("rviz/obstacles", 10);
             orca_obstacle_publisher = this->create_publisher<Marker>("rviz/orca", 10);
             visibility_obstacle_publisher = this->create_publisher<Marker>("rviz/visibility", 10);
+            laser_publisher = this->create_publisher<MarkerArray>("rviz/laser", 10);
 
             visualizing_timer = this->create_wall_timer(
                 1000ms, std::bind(&RvizVisualizer::visualizing_timer_callback, this));
@@ -293,11 +443,14 @@ class RvizVisualizer : public rclcpp::Node
             this->declare_parameter("concave_obstacles", false);
             this->declare_parameter("visibility_expansion_factor", 1.0);
             this->declare_parameter("orca_static_expansion_factor", 1.0);
+            this->declare_parameter("n_agents", 1);
 
-            visibility_expansion_factor = 
+            visibility_expansion_factor =
                 this->get_parameter("visibility_expansion_factor").get_parameter_value().get<double>();
-            orca_static_expansion_factor = 
+            orca_static_expansion_factor =
                 this->get_parameter("orca_static_expansion_factor").get_parameter_value().get<double>();
+            n_agents_ =
+                this->get_parameter("n_agents").get_parameter_value().get<int>();
             
             //mesh_path = 
             //    this->get_parameter("mesh_path").get_parameter_value().get<std::string>();
@@ -334,6 +487,12 @@ class RvizVisualizer : public rclcpp::Node
             agent_state_subscriber = 
                 this->create_subscription<AgentsStateFeedback>("agents",
                 2, std::bind(&RvizVisualizer::agents_state_callback, this, _1));
+            targets_subscriber =
+                this->create_subscription<MarkerArray>("targets",
+                10, std::bind(&RvizVisualizer::targets_callback, this, _1));
+            user_command_subscriber =
+                this->create_subscription<UserCommand>("user",
+                10, std::bind(&RvizVisualizer::user_command_callback, this, _1));
         
             // rotate z -90 then x -90 for it to be RDF
             nwu_to_rdf = enu_to_rdf = Eigen::Affine3d::Identity();

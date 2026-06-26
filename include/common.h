@@ -89,6 +89,8 @@ namespace common
         Eigen::Vector3d velocity;
         std::queue<Eigen::Vector3d> target_queue;
         double target_yaw;
+        double yaw_rate;
+        bool hover_yaw_control_active;
         Eigen::Vector3d previous_target;
         double previous_yaw;
         size_t flight_state;
@@ -134,6 +136,7 @@ namespace common
             const std::string hold = "hold";
             const std::string external = "external";
             const std::string go_to_velocity = "goto_velocity";
+            const std::string turn = "turn";
             const std::string attack = "attack"; //smac
 
             const std::string concurrent = "conc";

@@ -110,11 +110,13 @@ class MoveCommand(Command):
         #print("unit_",unit.id,",MoveCommand")
         if unit.max_velocity == 0:
             return np.zeros(6)
-        max_velocity = unit.max_velocity
         dpos = self.pos - unit.get_pos()
         distance = np.linalg.norm(dpos)
-        return np.zeros(6) if distance == 0 \
-            else np.hstack((dpos * max_velocity  / distance, [0,0,0]))
+        if distance < 0.05:
+            return np.zeros(6)
+        # Proportional slow-down within 0.5 m to avoid oscillation past the target.
+        speed = min(unit.max_velocity, distance * 2.0)
+        return np.hstack((dpos * speed / distance, [0, 0, 0]))
 
     def execute(self, unit: Unit, **kwargs) -> float:
         return 0
@@ -155,6 +157,7 @@ class AttackMoveCommand(Command):
         ## target position 
         self.pos = pos
         self.move_command = MoveCommand(pos)
+        self.targets = targets
 
     def clean_up_target(self, unit: Unit) -> None:
         if unit.target is None:
@@ -190,7 +193,15 @@ class AttackMoveCommand(Command):
         return AttackUnitCommand(unit.target).execute(unit, **kwargs)
 
     def __pick_target_damage(self, unit: Unit) -> Unit:
-        tgt = unit.potential_targets
+        tgt = list(unit.potential_targets)
+        if not tgt:
+            # Fallback when neighbor list has not been populated yet.
+            for target in list(self.targets):
+                if target is unit or target.hp <= 0:
+                    continue
+                dist = np.linalg.norm(target.get_pos() - unit.get_pos())
+                tgt.append((target, dist))
+
         # choose one in attack_range (don't have to turn) with minimum distance
         candidate = min(((u, d) for u, d in tgt
                          if u.hp > 0

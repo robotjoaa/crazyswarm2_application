@@ -152,10 +152,12 @@ class mission_handler : public rclcpp::Node
                     cmd.duration = 0.0;
 
                 if (strcmp(cmd.task.c_str(), dict.go_to.c_str()) == 0 || 
-                    strcmp(cmd.task.c_str(), dict.go_to_velocity.c_str()) == 0)
+                    strcmp(cmd.task.c_str(), dict.go_to_velocity.c_str()) == 0 ||
+                    strcmp(cmd.task.c_str(), dict.turn.c_str()) == 0 ||
+                    strcmp(cmd.task.c_str(), dict.attack.c_str()) == 0)
                 {
                     if (command_vector[i+4].empty())
-                        throw std::invalid_argument("[mission input] invalid goto or goto velocity target format");
+                        throw std::invalid_argument("[mission input] invalid goto/goto_velocity/turn/attack target format");
                     else
                     {
                         std::vector<std::string> targets = 
@@ -211,6 +213,8 @@ class mission_handler : public rclcpp::Node
                 state.t = clock.now();
                 state.transform = Eigen::Affine3d::Identity();
                 state.velocity = Eigen::Vector3d::Zero();
+                state.target_yaw = 0.0;
+                state.hover_yaw_control_active = false;
                 state.flight_state = IDLE;
                 state.radio_connection = false;
 
@@ -657,6 +661,100 @@ class mission_handler : public rclcpp::Node
                     
                     RCLCPP_INFO(this->get_logger(), "Sent %s goto", 
                         acc_id.c_str());                    
+                }
+
+                // "turn" (yaw-only while hovering)
+                else if(strcmp(cmd->task.c_str(), dict.turn.c_str()) == 0)
+                {
+                    UserCommand command;
+                    command.cmd = "turn";
+                    std::string acc_id;
+
+                    if (strcmp(cmd->agents[0].c_str(), dict.all.c_str()) == 0)
+                    {
+                        for (auto &[key, state] : agents_description)
+                        {
+                            (void)state;
+                            command.uav_id.push_back(key);
+                            acc_id += key;
+                        }
+                    }
+                    else
+                    {
+                        for (auto &agent : cmd->agents)
+                        {
+                            std::map<std::string, agent_state>::iterator it =
+                                agents_description.find(agent);
+                            if (it == agents_description.end())
+                                continue;
+                            command.uav_id.push_back(it->first);
+                            acc_id += it->first;
+                        }
+                    }
+
+                    command.yaw = cmd->target[3];
+                    command_publisher->publish(command);
+                    cmd->sent_mission = true;
+
+                    RCLCPP_INFO(this->get_logger(), "Sent %s turn yaw=%.2f",
+                        acc_id.c_str(), cmd->target[3]);
+                }
+
+                // "attack"
+                else if(strcmp(cmd->task.c_str(), dict.attack.c_str()) == 0)
+                {
+                    std::string acc_id;
+                    const bool has_target_id = !cmd->options.empty();
+
+                    // publish one attack command per source agent because the app attack
+                    // handler consumes the first uav_id as the shooter.
+                    if (strcmp(cmd->agents[0].c_str(), dict.all.c_str()) == 0)
+                    {
+                        for (auto &[key, state] : agents_description)
+                        {
+                            (void)state;
+                            UserCommand command;
+                            command.cmd = "attack";
+                            command.uav_id.push_back(key);
+                            if (has_target_id)
+                                command.uav_id.push_back(cmd->options);
+                            command.goal.x = cmd->target[0];
+                            command.goal.y = cmd->target[1];
+                            command.goal.z = cmd->target[2];
+                            command.yaw = cmd->target[3];
+                            command_publisher->publish(command);
+                            acc_id += key;
+                        }
+                    }
+                    else
+                    {
+                        for (auto &agent : cmd->agents)
+                        {
+                            std::map<std::string, agent_state>::iterator it =
+                                agents_description.find(agent);
+
+                            if (it == agents_description.end())
+                                continue;
+
+                            UserCommand command;
+                            command.cmd = "attack";
+                            command.uav_id.push_back(it->first);
+                            if (has_target_id)
+                                command.uav_id.push_back(cmd->options);
+                            command.goal.x = cmd->target[0];
+                            command.goal.y = cmd->target[1];
+                            command.goal.z = cmd->target[2];
+                            command.yaw = cmd->target[3];
+                            command_publisher->publish(command);
+                            acc_id += it->first;
+                        }
+                    }
+
+                    cmd->sent_mission = true;
+                    if (has_target_id)
+                        RCLCPP_INFO(this->get_logger(), "Sent %s attack target=%s", acc_id.c_str(), cmd->options.c_str());
+                    else
+                        RCLCPP_INFO(this->get_logger(), "Sent %s attack", acc_id.c_str());
                 }
 
                 // "land"
