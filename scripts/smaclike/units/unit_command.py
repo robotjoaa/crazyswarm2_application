@@ -194,13 +194,14 @@ class AttackMoveCommand(Command):
 
     def __pick_target_damage(self, unit: Unit) -> Unit:
         tgt = list(unit.potential_targets)
-        if not tgt:
-            # Fallback when neighbor list has not been populated yet.
-            for target in list(self.targets):
-                if target is unit or target.hp <= 0:
-                    continue
-                dist = np.linalg.norm(target.get_pos() - unit.get_pos())
-                tgt.append((target, dist))
+        
+        # if not tgt:
+        #     # Fallback when neighbor list has not been populated yet.
+        #     for target in list(self.targets):
+        #         if target is unit or target.hp <= 0:
+        #             continue
+        #         dist = np.linalg.norm(target.get_pos() - unit.get_pos())
+        #         tgt.append((target, dist))
 
         # choose one in attack_range (don't have to turn) with minimum distance
         candidate = min(((u, d) for u, d in tgt

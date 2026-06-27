@@ -305,6 +305,9 @@ namespace cs2
                 command_publisher =
                     this->create_publisher<UserCommand>("user", 30);
 
+                attack_hit_publisher =
+                    this->create_publisher<UserCommand>("attack_hit", 30);
+
                 subscription_user = 
                     this->create_subscription<UserCommand>("user", 30, std::bind(&cs2_application::user_callback, this, _1));
 
@@ -398,6 +401,7 @@ namespace cs2
 
             rclcpp::Subscription<UserCommand>::SharedPtr subscription_user;
             rclcpp::Publisher<UserCommand>::SharedPtr command_publisher;
+            rclcpp::Publisher<UserCommand>::SharedPtr attack_hit_publisher;
 
             rclcpp::Publisher<NamedPoseArray>::SharedPtr pose_publisher;
             rclcpp::Publisher<AgentsStateFeedback>::SharedPtr agent_state_publisher;

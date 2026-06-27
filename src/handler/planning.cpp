@@ -254,8 +254,9 @@ void cs2::cs2_application::handler_timer_callback()
                 auto it = agents_comm.find(key);
                 if (it != agents_comm.end()){
                     it->second.vel_world_publisher->publish(vel_msg);
-                    //it->second.hover_world_publisher->publish(hover_msg);
-                // agent.completed = false;
+                    auto rvo_it = rvo_agents.find(key);
+                    float communication_radius_sq_float = (float)(communication_radius * communication_radius);
+                    rvo_it->second.updateVisibility(communication_radius_sq_float);
                 }
                 break;
             }
@@ -875,12 +876,6 @@ size_t cs2::cs2_application::do_laser_action(
         return 0;
     }
 
-    float communication_radius_sq_float =
-        (float)(communication_radius * communication_radius);
-    // Refresh visibility here because attack can be issued while the agent is hovering
-    // and neighbor visibility may be stale if no recent MOVE_VELOCITY update happened.
-    rvo_current->second.updateVisibility(communication_radius_sq_float);
-
     auto vis_ally = rvo_current->second.getNeighbors(ALLY);
     auto vis_enemy = rvo_current->second.getNeighbors(ENEMY);
 
@@ -931,34 +926,57 @@ size_t cs2::cs2_application::do_laser_action(
 void cs2::cs2_application::get_line_polygon_intersection(
     visibility_graph::global_map& g_m, std::pair<Eigen::Vector3d, Eigen::Vector3d> s_e, std::vector<Eigen::Vector3d>& intersections
 )
-{   
+{
     for (visibility_graph::obstacle &obs : g_m.obs){
-        // for each obs as a polygon, get_line_plane_intersection
         int obs_vert_size = obs.v.size();
-        // doesn't matter if it's concave obstacle 
 
-        // bottom 
-        Eigen::Vector3d tmp_pop = Eigen::Vector3d(obs.c[0], obs.c[1], obs.h.first);
-        Eigen::Vector3d tmp_n = Eigen::Vector3d(0,0,-1);
-        Eigen::Vector3d result; 
-        if(visibility_graph::get_line_plane_intersection(s_e, tmp_n, tmp_pop, result)){
-            intersections.push_back(result);
+        // bottom face — only count if XY lands inside the polygon footprint
+        {
+            Eigen::Vector3d tmp_pop(obs.c[0], obs.c[1], obs.h.first);
+            Eigen::Vector3d tmp_n(0, 0, -1);
+            Eigen::Vector3d result;
+            if (visibility_graph::get_line_plane_intersection(s_e, tmp_n, tmp_pop, result)){
+                if (visibility_graph::point_in_polygon(obs, Eigen::Vector2d(result.x(), result.y())))
+                    intersections.push_back(result);
+            }
         }
-        // top
-        tmp_pop = Eigen::Vector3d(obs.c[0], obs.c[1], obs.h.second);
-        tmp_n = Eigen::Vector3d(0,0,1);
-        if(visibility_graph::get_line_plane_intersection(s_e, tmp_n, tmp_pop, result)){
-            intersections.push_back(result);
+
+        // top face — same check
+        {
+            Eigen::Vector3d tmp_pop(obs.c[0], obs.c[1], obs.h.second);
+            Eigen::Vector3d tmp_n(0, 0, 1);
+            Eigen::Vector3d result;
+            if (visibility_graph::get_line_plane_intersection(s_e, tmp_n, tmp_pop, result)){
+                if (visibility_graph::point_in_polygon(obs, Eigen::Vector2d(result.x(), result.y())))
+                    intersections.push_back(result);
+            }
         }
-        
-        // base vertices
+
+        // side faces — only count if intersection is within the actual face,
+        // i.e. Z is in [h.first, h.second] AND the XY point falls on the edge
+        // segment (not on the infinite plane extension beyond the edge ends).
         for (int i = 0; i < obs_vert_size; i++){
             int next_i = (i+1) % obs_vert_size;
-            Eigen::Vector3d tmp_pop = Eigen::Vector3d(obs.v[i].x(), obs.v[i].y(), obs.h.first);
-            Eigen::Vector3d tmp_n = Eigen::Vector3d(obs.v[next_i].y() - obs.v[i].y(), - obs.v[next_i].x() + obs.v[i].x(), 0);
-            Eigen::Vector3d result; 
-            if(visibility_graph::get_line_plane_intersection(s_e, tmp_n, tmp_pop, result)){
-                intersections.push_back(result);
+            Eigen::Vector3d tmp_pop(obs.v[i].x(), obs.v[i].y(), obs.h.first);
+            Eigen::Vector3d tmp_n(
+                obs.v[next_i].y() - obs.v[i].y(),
+                -obs.v[next_i].x() + obs.v[i].x(),
+                0.0);
+            Eigen::Vector3d result;
+            if (visibility_graph::get_line_plane_intersection(s_e, tmp_n, tmp_pop, result)){
+                // Height must be within obstacle vertical bounds
+                if (result.z() < obs.h.first || result.z() > obs.h.second)
+                    continue;
+                // XY must land within the edge segment [v[i], v[next_i]]
+                Eigen::Vector2d edge(
+                    obs.v[next_i].x() - obs.v[i].x(),
+                    obs.v[next_i].y() - obs.v[i].y());
+                double edge_sq = edge.squaredNorm();
+                if (edge_sq < 1e-9) continue;
+                Eigen::Vector2d rel(result.x() - obs.v[i].x(), result.y() - obs.v[i].y());
+                double t = rel.dot(edge) / edge_sq;
+                if (t >= 0.0 && t <= 1.0)
+                    intersections.push_back(result);
             }
         }
     }

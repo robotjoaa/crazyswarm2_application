@@ -32,9 +32,10 @@ from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA
 from scipy.spatial.transform import Rotation as ScipyR
 
-### smaclike 
+### smaclike
 import numpy as np
 from ament_index_python.packages import get_package_share_directory
+from smaclike_hp_handlers import HpEventHandler, RvizHpHandler, LedHpHandler
 
 # from smaclike.mamp.envs.mampenv import MACAEnv
 # from smaclike.mamp.agents.agent import Agent
@@ -412,6 +413,16 @@ class SmaclikeAviary(Node):
                     self.get_qos_profile(20)))
         # source of truth for visibility from crazyswarm_application/planning node
         self.visible_enemy_cache = {}  # unit_id -> List[(neighbor_ros_id, distance)]
+        self.attack_hit_subscription = self.create_subscription(
+            UserCommand, '/attack_hit', self._attack_hit_callback,
+            self.get_qos_profile(30))
+
+        # HP event handlers — append new HpEventHandler subclasses here to add
+        # feedback channels without touching the hit-processing logic.
+        self._hp_event_handlers: List[HpEventHandler] = [
+            RvizHpHandler(self),
+            LedHpHandler(self, self.cf_prefix),
+        ]
         self.command_publish_queue = []
         # Per-unit exit queues for the safe-zone → land sequence (Option B).
         self.unit_cmd_queues: Dict[int, deque] = {}
@@ -738,6 +749,11 @@ class SmaclikeAviary(Node):
         def get_attack_pos(idx):
             return pos if pos.ndim == 1 else pos[idx]
 
+        # Notify handlers so they can set initial per-unit state (e.g. LED ring mode).
+        for unit in self.all_units.values():
+            if unit.hp > 0:
+                for handler in self._hp_event_handlers:
+                    handler.on_init(unit)
 
         # Allies advance toward the center of the enemy deployment area.
         enemy_center = np.mean(self.initial_poses[self.n_agents:, :3], axis=0)
@@ -1023,6 +1039,48 @@ class SmaclikeAviary(Node):
         rng = np.random.Generator(np.random.PCG64(seed_seq))
         self._np_random = rng
 
+    def _notify_hp_event(self, unit, shooter_unit,
+                         old_hp: float, new_hp: float) -> None:
+        """Broadcast a hit event to all registered HP event handlers."""
+        for handler in self._hp_event_handlers:
+            handler.on_hit(unit, shooter_unit, old_hp, new_hp)
+
+    def _attack_hit_callback(self, msg: UserCommand):
+        """C++ raycasting determined which unit was actually struck.
+        Apply one shot of damage to that unit; notify HP handlers; if HP
+        reaches 0 trigger exit and confirm the kill to C++ so it sets
+        mission_capable=false and initiates landing."""
+        if len(msg.uav_id) < 2:
+            return
+        shooter_key = msg.uav_id[0]
+        hit_key     = msg.uav_id[1]
+
+        shooter_unit = self.all_units.get(key_to_id(shooter_key))
+        hit_unit     = self.all_units.get(key_to_id(hit_key))
+
+        if shooter_unit is None or hit_unit is None:
+            return
+        if hit_unit.hp <= 0:
+            return
+
+        old_hp = hit_unit.hp
+        shooter_unit.deal_damage(hit_unit)
+        new_hp = hit_unit.hp
+        self.get_logger().info(
+            f"{shooter_key} hits {hit_key}: hp {old_hp:.0f} → {new_hp:.0f}")
+
+        self._notify_hp_event(hit_unit, shooter_unit, old_hp, new_hp)
+
+        if hit_unit.hp <= 0 and hit_unit.id not in self.unit_cmd_queues:
+            self.get_logger().info(f"{hit_key} dead (hp=0), confirming kill to C++")
+            for handler in self._hp_event_handlers:
+                handler.on_death(hit_unit)
+            self._trigger_exit_sequence(hit_unit)
+            kill_cmd = UserCommand()
+            kill_cmd.cmd = "kill"
+            kill_cmd.uav_id = [hit_key]
+            self.command_publisher.publish(kill_cmd)
+
     def _main_loop(self):
         # ── Combat block (skipped after game over) ──────────────────────
         if self.start_mission:
@@ -1042,22 +1100,11 @@ class SmaclikeAviary(Node):
                 cmd = self._build_prepared_command(unit)
                 if cmd is not None:
                     self.command_publish_queue.append(cmd)
-                hit_unit = (unit.target
-                            if unit.attacking and unit.target is not None and unit.target.hp > 0
-                            else None)
-                hp_before = hit_unit.hp if hit_unit is not None else 0
-                unit.game_step(hit_unit=hit_unit)
-                if hit_unit is not None and hp_before > hit_unit.hp:
-                    shooter_key = self.cf_prefix + str(unit.id + 1)
-                    target_key  = self.cf_prefix + str(hit_unit.id + 1)
-                    self.get_logger().info(
-                        f"{shooter_key} hits {target_key}: "
-                        f"hp {hp_before:.0f} → {hit_unit.hp:.0f}")
-                if hit_unit is not None and hit_unit.hp <= 0 \
-                        and hit_unit.id not in self.unit_cmd_queues:
-                    self.get_logger().info(
-                        f"{self.cf_prefix + str(hit_unit.id + 1)} dead (hp=0)")
-                    self._trigger_exit_sequence(hit_unit)
+                
+                # C++ do_laser_action handles actual hit resolution (raycasting).
+                # Pass hit_unit=None so game_step only ticks cooldown/state,
+                # not HP — the Python HP model is updated via mission_capable feedback.
+                unit.game_step(hit_unit=None)
 
             for cmd in self.command_publish_queue:
                 self.command_publisher.publish(cmd)

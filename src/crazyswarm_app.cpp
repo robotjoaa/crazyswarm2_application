@@ -364,20 +364,33 @@ void cs2::cs2_application::user_callback(
             return;
         }
 
-        auto hit_state_it = agents_states.find(hit_key);
-        auto hit_comm_it = agents_comm.find(hit_key);
-        if (hit_state_it != agents_states.end())
-        {
-            agent_update_mutex.lock();
-            hit_state_it->second.mission_capable = false;
-            agent_update_mutex.unlock();
-        }
-
-        if (hit_state_it != agents_states.end() && hit_comm_it != agents_comm.end())
-            send_land_and_update(hit_state_it, hit_comm_it);
+        // Notify Python of the actual hit unit so it can apply HP damage.
+        // Python decides death (HP ≤ 0) and sends back a "kill" command.
+        UserCommand hit_event;
+        hit_event.cmd = dict.attack_hit;
+        hit_event.uav_id.push_back(copy.uav_id.front()); // shooter
+        hit_event.uav_id.push_back(hit_key);             // actual hit unit
+        attack_hit_publisher->publish(hit_event);
 
         RCLCPP_INFO(this->get_logger(), "attack_sent (hit %s)", hit_key.c_str());
 
+    }
+    // Python confirmed a unit's HP reached 0 — now mark it dead and land it.
+    else if (strcmp(copy.cmd.c_str(), dict.kill.c_str()) == 0)
+    {
+        for (const auto &dead_key : copy.uav_id)
+        {
+            auto dead_state_it = agents_states.find(dead_key);
+            auto dead_comm_it  = agents_comm.find(dead_key);
+            if (dead_state_it == agents_states.end())
+                continue;
+            agent_update_mutex.lock();
+            dead_state_it->second.mission_capable = false;
+            agent_update_mutex.unlock();
+            if (dead_comm_it != agents_comm.end())
+                send_land_and_update(dead_state_it, dead_comm_it);
+            RCLCPP_INFO(this->get_logger(), "kill confirmed: %s", dead_key.c_str());
+        }
     }
     else
         RCLCPP_ERROR(this->get_logger(), "wrong command type, resend");

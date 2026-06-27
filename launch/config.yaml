@@ -25,7 +25,8 @@ environment_file: "box_v2.yaml"
 n_agents: 2
 
 # smaclike map file 
-smaclike_map: "test_2vs3"
+#smaclike_map: "test_2vs3"
+smaclike_map: "test_1vs1"
 
 external_timeout: 4.0
 # 1 corrugated board: length(x) 1.22, width(y) 2.454, 

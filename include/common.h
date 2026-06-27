@@ -138,6 +138,8 @@ namespace common
             const std::string go_to_velocity = "goto_velocity";
             const std::string turn = "turn";
             const std::string attack = "attack"; //smac
+            const std::string attack_hit = "attack_hit"; // C++→Python hit notification
+            const std::string kill = "kill";             // Python→C++ death confirmation
 
             const std::string concurrent = "conc";
             const std::string wait = "wait";
